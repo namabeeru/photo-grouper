@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import DropZone from '@/components/DropZone';
-import { X, Trash2, Download } from 'lucide-react';
+import CollageModal from '@/components/CollageModal';
+import { generateCollage } from '@/utils/collageGenerator';
+import { X, Trash2, Download, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
 interface FileWithPreview {
@@ -12,8 +14,9 @@ interface FileWithPreview {
 
 export default function Home() {
   const [files, setFiles] = useState<FileWithPreview[]>([]);
-
-
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [collageUrl, setCollageUrl] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Keep track of files ref for cleanup on unmount
   const filesRef = React.useRef(files);
@@ -25,13 +28,14 @@ export default function Home() {
   useEffect(() => {
     return () => {
       filesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
+      if (collageUrl) URL.revokeObjectURL(collageUrl);
     };
   }, []);
 
   const handleFilesDropped = (droppedFiles: File[]) => {
     const newFiles = droppedFiles.map((file) => ({
       file,
-      previewUrl: URL.createObjectURL(file),
+      previewUrl: URL.createObjectURL(file), // These are for the PREVIEW grid
     }));
     setFiles((prev) => [...prev, ...newFiles]);
   };
@@ -43,6 +47,26 @@ export default function Home() {
       newFiles.splice(index, 1);
       return newFiles;
     });
+  };
+
+  const handleGenerateCollage = async () => {
+    if (files.length === 0) return;
+
+    setIsGenerating(true);
+    try {
+      // Pass the preview URLs to the generator
+      // Note: In a real app with large original files, we might want to read the File objects directly
+      // but using the object URLs is efficient for client-side canvas drawing.
+      const urls = files.map((f) => f.previewUrl);
+      const url = await generateCollage(urls);
+      setCollageUrl(url);
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error('Failed to generate collage:', error);
+      alert('Failed to generate collage. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -125,15 +149,27 @@ export default function Home() {
               <span className="sm:hidden">Clear</span>
             </button>
             <button
-              disabled
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-slate-900 text-white font-medium rounded-full opacity-50 cursor-not-allowed"
+              onClick={handleGenerateCollage}
+              disabled={isGenerating}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-full shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Download className="w-5 h-5" />
-              <span>Download Collage</span>
+              {isGenerating ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Download className="w-5 h-5" />
+              )}
+              <span>{isGenerating ? 'Generating...' : 'Download Collage'}</span>
             </button>
           </div>
         </div>
       )}
+
+      {/* Preview Modal */}
+      <CollageModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        imageUrl={collageUrl}
+      />
     </main>
   );
 }
