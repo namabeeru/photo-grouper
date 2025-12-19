@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import HomePage from '@/components/HomePage';
 import PhotoSelection from '@/components/PhotoSelection';
 import CollageEditor from '@/components/CollageEditor';
+import InstallPrompt from '@/components/InstallPrompt';
 import { TEMPLATES, CollageTemplate, getDefaultTemplate, getTemplatesForPhotoCount } from '@/utils/templates';
 import { saveCollage } from '@/utils/collageGenerator';
 
@@ -220,6 +221,8 @@ export default function Home() {
           onCancel={handleCancelEditor}
         />
       )}
+
+      <InstallPrompt />
     </>
   );
 }
