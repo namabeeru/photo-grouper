@@ -1,164 +1,187 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import CollageCanvas from '@/components/CollageCanvas';
-import TemplateStrip from '@/components/TemplateStrip';
-import { TEMPLATES, CollageTemplate, getDefaultTemplate } from '@/utils/templates';
+import HomePage from '@/components/HomePage';
+import PhotoSelection from '@/components/PhotoSelection';
+import CollageEditor from '@/components/CollageEditor';
+import { TEMPLATES, CollageTemplate, getDefaultTemplate, getTemplatesForPhotoCount } from '@/utils/templates';
 import { saveCollage } from '@/utils/collageGenerator';
-import { Share, Download, Plus, Loader2, Image as ImageIcon } from 'lucide-react';
 
 interface PhotoData {
   file: File;
   previewUrl: string;
 }
 
+type AppPhase = 'home' | 'selection' | 'editor';
+
+const MAX_PHOTOS = 9;
+
 export default function Home() {
-  const [photos, setPhotos] = useState<Map<string, PhotoData>>(new Map());
-  const [selectedTemplate, setSelectedTemplate] = useState<CollageTemplate>(TEMPLATES[4]); // 4-grid default
-  const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
+  // Phase state
+  const [phase, setPhase] = useState<AppPhase>('home');
+
+  // Photo state
+  const [photos, setPhotos] = useState<PhotoData[]>([]);
+
+  // Collage state
+  const [selectedTemplate, setSelectedTemplate] = useState<CollageTemplate>(TEMPLATES[0]);
+  const [photoAssignments, setPhotoAssignments] = useState<Map<string, number>>(new Map());
+  const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [availablePhotos, setAvailablePhotos] = useState<PhotoData[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const photoCount = photos.size;
 
   // Cleanup URLs on unmount
   useEffect(() => {
     return () => {
       photos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
-      availablePhotos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
     };
   }, []);
 
-  const handleAddPhoto = (slotId: string) => {
-    setActiveSlotId(slotId);
-    fileInputRef.current?.click();
-  };
+  // ===== PHOTO SELECTION HANDLERS =====
 
-  const handleRemovePhoto = (slotId: string) => {
-    setPhotos((prev) => {
-      const newMap = new Map(prev);
-      const photo = newMap.get(slotId);
-      if (photo) {
-        // Add back to available photos
-        setAvailablePhotos((availablePhotos) => [...availablePhotos, photo]);
-      }
-      newMap.delete(slotId);
-      return newMap;
-    });
-  };
+  const handleSelectPhotos = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
 
-    const files = Array.from(e.target.files).filter((file) =>
-      file.type.startsWith('image/')
-    );
+    const files = Array.from(e.target.files)
+      .filter((file) => file.type.startsWith('image/'))
+      .slice(0, MAX_PHOTOS - photos.length);
 
     if (files.length === 0) return;
 
-    // If we have an active slot, fill it with the first photo
-    if (activeSlotId && files.length > 0) {
-      const firstFile = files[0];
-      const photoData: PhotoData = {
-        file: firstFile,
-        previewUrl: URL.createObjectURL(firstFile),
-      };
+    const newPhotos = files.map((file) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
 
-      setPhotos((prev) => {
-        const newMap = new Map(prev);
-        newMap.set(activeSlotId, photoData);
-        return newMap;
-      });
+    setPhotos((prev) => {
+      const combined = [...prev, ...newPhotos].slice(0, MAX_PHOTOS);
+      return combined;
+    });
 
-      // Add remaining files to available photos
-      const remaining = files.slice(1).map((file) => ({
-        file,
-        previewUrl: URL.createObjectURL(file),
-      }));
-      setAvailablePhotos((prev) => [...prev, ...remaining]);
-    } else {
-      // Add all to available photos and auto-fill empty slots
-      const newPhotos = files.map((file) => ({
-        file,
-        previewUrl: URL.createObjectURL(file),
-      }));
-
-      // Auto-fill empty slots
-      setPhotos((prev) => {
-        const newMap = new Map(prev);
-        let photoIndex = 0;
-
-        for (const slot of selectedTemplate.slots) {
-          if (!newMap.has(slot.id) && photoIndex < newPhotos.length) {
-            newMap.set(slot.id, newPhotos[photoIndex]);
-            photoIndex++;
-          }
-        }
-
-        // Add remaining to available
-        const remaining = newPhotos.slice(photoIndex);
-        if (remaining.length > 0) {
-          setAvailablePhotos((availablePhotos) => [...availablePhotos, ...remaining]);
-        }
-
-        return newMap;
-      });
+    // Move to selection phase if on home
+    if (phase === 'home') {
+      setPhase('selection');
     }
 
-    setActiveSlotId(null);
+    // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, [activeSlotId, selectedTemplate.slots]);
+  }, [phase, photos.length]);
 
-  const handleTemplateChange = (template: CollageTemplate) => {
-    // Collect all current photos
-    const allPhotos: PhotoData[] = [...availablePhotos];
-    photos.forEach((photo) => allPhotos.push(photo));
-
-    // Redistribute to new template
-    const newPhotosMap = new Map<string, PhotoData>();
-    let photoIndex = 0;
-
-    for (const slot of template.slots) {
-      if (photoIndex < allPhotos.length) {
-        newPhotosMap.set(slot.id, allPhotos[photoIndex]);
-        photoIndex++;
+  const handleRemovePhoto = useCallback((index: number) => {
+    setPhotos((prev) => {
+      const photo = prev[index];
+      if (photo) {
+        URL.revokeObjectURL(photo.previewUrl);
       }
-    }
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
 
-    // Remaining go to available
-    const remaining = allPhotos.slice(photoIndex);
+  // ===== COLLAGE PHASE HANDLERS =====
 
-    setPhotos(newPhotosMap);
-    setAvailablePhotos(remaining);
+  const handleGroupIt = useCallback(() => {
+    if (photos.length < 2) return;
+
+    // Get best template for photo count
+    const template = getDefaultTemplate(photos.length);
     setSelectedTemplate(template);
-  };
 
-  const handleSave = async () => {
-    if (photoCount === 0) return;
+    // Assign photos to slots
+    const assignments = new Map<string, number>();
+    template.slots.forEach((slot, index) => {
+      if (index < photos.length) {
+        assignments.set(slot.id, index);
+      }
+    });
+    setPhotoAssignments(assignments);
+    setSelectedSlot(null);
+    setPhase('editor');
+  }, [photos.length]);
+
+  const handleTemplateSelect = useCallback((template: CollageTemplate) => {
+    setSelectedTemplate(template);
+
+    // Reassign photos to new template slots
+    const assignments = new Map<string, number>();
+    template.slots.forEach((slot, index) => {
+      if (index < photos.length) {
+        assignments.set(slot.id, index);
+      }
+    });
+    setPhotoAssignments(assignments);
+    setSelectedSlot(null);
+  }, [photos.length]);
+
+  const handleSlotClick = useCallback((slotId: string) => {
+    if (!selectedSlot) {
+      // First selection
+      setSelectedSlot(slotId);
+    } else if (selectedSlot === slotId) {
+      // Deselect
+      setSelectedSlot(null);
+    } else {
+      // Swap photos between slots
+      setPhotoAssignments((prev) => {
+        const newMap = new Map(prev);
+        const photo1 = prev.get(selectedSlot);
+        const photo2 = prev.get(slotId);
+
+        if (photo1 !== undefined) {
+          newMap.set(slotId, photo1);
+        } else {
+          newMap.delete(slotId);
+        }
+
+        if (photo2 !== undefined) {
+          newMap.set(selectedSlot, photo2);
+        } else {
+          newMap.delete(selectedSlot);
+        }
+
+        return newMap;
+      });
+      setSelectedSlot(null);
+    }
+  }, [selectedSlot]);
+
+  const handleSave = useCallback(async () => {
+    if (photos.length === 0) return;
 
     setIsSaving(true);
     try {
-      await saveCollage(selectedTemplate, photos);
+      // Convert assignments to the format expected by saveCollage
+      const photosMap = new Map<string, PhotoData>();
+      photoAssignments.forEach((photoIndex, slotId) => {
+        if (photos[photoIndex]) {
+          photosMap.set(slotId, photos[photoIndex]);
+        }
+      });
+
+      await saveCollage(selectedTemplate, photosMap);
     } catch (error) {
       console.error('Failed to save collage:', error);
       alert('Failed to save collage. Please try again.');
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [photos, photoAssignments, selectedTemplate]);
 
-  const handleAddMorePhotos = () => {
-    setActiveSlotId(null);
-    fileInputRef.current?.click();
-  };
+  const handleCancelEditor = useCallback(() => {
+    setSelectedSlot(null);
+    setPhase('selection');
+  }, []);
 
-  const canSave = photoCount > 0;
+  // ===== RENDER =====
 
   return (
-    <main className="h-screen flex flex-col bg-slate-900 text-white">
+    <>
       {/* Hidden file input */}
       <input
         type="file"
@@ -169,102 +192,34 @@ export default function Home() {
         accept="image/*"
       />
 
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 bg-slate-800/50 backdrop-blur-sm border-b border-slate-700">
-        <div className="flex items-center gap-3">
-          <ImageIcon className="w-6 h-6 text-blue-400" />
-          <h1 className="text-lg font-semibold">Collage</h1>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Add more photos button */}
-          <button
-            onClick={handleAddMorePhotos}
-            className="p-2.5 hover:bg-slate-700 rounded-full transition-colors"
-            title="Add more photos"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-
-          {/* Save/Share button */}
-          <button
-            onClick={handleSave}
-            disabled={!canSave || isSaving}
-            className={`
-              flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all
-              ${canSave
-                ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                : 'bg-slate-700 text-slate-400 cursor-not-allowed'
-              }
-            `}
-          >
-            {isSaving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Share className="w-4 h-4" />
-            )}
-            <span className="hidden sm:inline">{isSaving ? 'Saving...' : 'Share'}</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Main Canvas Area */}
-      <CollageCanvas
-        template={selectedTemplate}
-        photos={photos}
-        onAddPhoto={handleAddPhoto}
-        onRemovePhoto={handleRemovePhoto}
-      />
-
-      {/* Available Photos Strip (if any) */}
-      {availablePhotos.length > 0 && (
-        <div className="px-4 py-2 bg-slate-800/50 border-t border-slate-700">
-          <p className="text-xs text-slate-400 mb-2">
-            {availablePhotos.length} more {availablePhotos.length === 1 ? 'photo' : 'photos'} available
-          </p>
-          <div className="flex gap-2 overflow-x-auto">
-            {availablePhotos.map((photo, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  // Find first empty slot and fill it
-                  const emptySlot = selectedTemplate.slots.find((s) => !photos.has(s.id));
-                  if (emptySlot) {
-                    setPhotos((prev) => {
-                      const newMap = new Map(prev);
-                      newMap.set(emptySlot.id, photo);
-                      return newMap;
-                    });
-                    setAvailablePhotos((prev) => prev.filter((_, i) => i !== index));
-                  }
-                }}
-                className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden ring-2 ring-slate-600 hover:ring-blue-400 transition-all"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photo.previewUrl}
-                  alt=""
-                  className="w-full h-full object-cover"
-                />
-              </button>
-            ))}
-          </div>
-        </div>
+      {phase === 'home' && (
+        <HomePage onSelectPhotos={handleSelectPhotos} />
       )}
 
-      {/* Template Strip */}
-      <div className="bg-slate-800 border-t border-slate-700">
-        <div className="px-4 pt-3 pb-1">
-          <p className="text-xs text-slate-400">Choose layout</p>
-        </div>
-        <TemplateStrip
-          templates={TEMPLATES}
-          selectedId={selectedTemplate.id}
-          onSelect={handleTemplateChange}
+      {phase === 'selection' && (
+        <PhotoSelection
+          photos={photos}
+          maxPhotos={MAX_PHOTOS}
+          onAddPhotos={handleSelectPhotos}
+          onRemovePhoto={handleRemovePhoto}
+          onGroupIt={handleGroupIt}
         />
-        {/* Safe area padding for notch devices */}
-        <div className="h-2 sm:h-4" />
-      </div>
-    </main>
+      )}
+
+      {phase === 'editor' && (
+        <CollageEditor
+          photos={photos}
+          templates={getTemplatesForPhotoCount(photos.length)}
+          selectedTemplate={selectedTemplate}
+          photoAssignments={photoAssignments}
+          selectedSlot={selectedSlot}
+          isSaving={isSaving}
+          onTemplateSelect={handleTemplateSelect}
+          onSlotClick={handleSlotClick}
+          onSave={handleSave}
+          onCancel={handleCancelEditor}
+        />
+      )}
+    </>
   );
 }
