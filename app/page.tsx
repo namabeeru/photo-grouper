@@ -1,175 +1,270 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import DropZone from '@/components/DropZone';
-import CollageModal from '@/components/CollageModal';
-import { generateCollage } from '@/utils/collageGenerator';
-import { X, Trash2, Download, Loader2 } from 'lucide-react';
-import Image from 'next/image';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import CollageCanvas from '@/components/CollageCanvas';
+import TemplateStrip from '@/components/TemplateStrip';
+import { TEMPLATES, CollageTemplate, getDefaultTemplate } from '@/utils/templates';
+import { saveCollage } from '@/utils/collageGenerator';
+import { Share, Download, Plus, Loader2, Image as ImageIcon } from 'lucide-react';
 
-interface FileWithPreview {
+interface PhotoData {
   file: File;
   previewUrl: string;
 }
 
 export default function Home() {
-  const [files, setFiles] = useState<FileWithPreview[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [collageUrl, setCollageUrl] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [photos, setPhotos] = useState<Map<string, PhotoData>>(new Map());
+  const [selectedTemplate, setSelectedTemplate] = useState<CollageTemplate>(TEMPLATES[4]); // 4-grid default
+  const [activeSlotId, setActiveSlotId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [availablePhotos, setAvailablePhotos] = useState<PhotoData[]>([]);
 
-  // Keep track of files ref for cleanup on unmount
-  const filesRef = React.useRef(files);
-  useEffect(() => {
-    filesRef.current = files;
-  }, [files]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoCount = photos.size;
 
-  // Cleanup object URLs on component unmount
+  // Cleanup URLs on unmount
   useEffect(() => {
     return () => {
-      filesRef.current.forEach((file) => URL.revokeObjectURL(file.previewUrl));
-      if (collageUrl) URL.revokeObjectURL(collageUrl);
+      photos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+      availablePhotos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
     };
   }, []);
 
-  const handleFilesDropped = (droppedFiles: File[]) => {
-    const newFiles = droppedFiles.map((file) => ({
-      file,
-      previewUrl: URL.createObjectURL(file), // These are for the PREVIEW grid
-    }));
-    setFiles((prev) => [...prev, ...newFiles]);
+  const handleAddPhoto = (slotId: string) => {
+    setActiveSlotId(slotId);
+    fileInputRef.current?.click();
   };
 
-  const removeFile = (index: number) => {
-    setFiles((prev) => {
-      const newFiles = [...prev];
-      URL.revokeObjectURL(newFiles[index].previewUrl);
-      newFiles.splice(index, 1);
-      return newFiles;
+  const handleRemovePhoto = (slotId: string) => {
+    setPhotos((prev) => {
+      const newMap = new Map(prev);
+      const photo = newMap.get(slotId);
+      if (photo) {
+        // Add back to available photos
+        setAvailablePhotos((availablePhotos) => [...availablePhotos, photo]);
+      }
+      newMap.delete(slotId);
+      return newMap;
     });
   };
 
-  const handleGenerateCollage = async () => {
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    const files = Array.from(e.target.files).filter((file) =>
+      file.type.startsWith('image/')
+    );
+
     if (files.length === 0) return;
 
-    setIsGenerating(true);
+    // If we have an active slot, fill it with the first photo
+    if (activeSlotId && files.length > 0) {
+      const firstFile = files[0];
+      const photoData: PhotoData = {
+        file: firstFile,
+        previewUrl: URL.createObjectURL(firstFile),
+      };
+
+      setPhotos((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(activeSlotId, photoData);
+        return newMap;
+      });
+
+      // Add remaining files to available photos
+      const remaining = files.slice(1).map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+      setAvailablePhotos((prev) => [...prev, ...remaining]);
+    } else {
+      // Add all to available photos and auto-fill empty slots
+      const newPhotos = files.map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+
+      // Auto-fill empty slots
+      setPhotos((prev) => {
+        const newMap = new Map(prev);
+        let photoIndex = 0;
+
+        for (const slot of selectedTemplate.slots) {
+          if (!newMap.has(slot.id) && photoIndex < newPhotos.length) {
+            newMap.set(slot.id, newPhotos[photoIndex]);
+            photoIndex++;
+          }
+        }
+
+        // Add remaining to available
+        const remaining = newPhotos.slice(photoIndex);
+        if (remaining.length > 0) {
+          setAvailablePhotos((availablePhotos) => [...availablePhotos, ...remaining]);
+        }
+
+        return newMap;
+      });
+    }
+
+    setActiveSlotId(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [activeSlotId, selectedTemplate.slots]);
+
+  const handleTemplateChange = (template: CollageTemplate) => {
+    // Collect all current photos
+    const allPhotos: PhotoData[] = [...availablePhotos];
+    photos.forEach((photo) => allPhotos.push(photo));
+
+    // Redistribute to new template
+    const newPhotosMap = new Map<string, PhotoData>();
+    let photoIndex = 0;
+
+    for (const slot of template.slots) {
+      if (photoIndex < allPhotos.length) {
+        newPhotosMap.set(slot.id, allPhotos[photoIndex]);
+        photoIndex++;
+      }
+    }
+
+    // Remaining go to available
+    const remaining = allPhotos.slice(photoIndex);
+
+    setPhotos(newPhotosMap);
+    setAvailablePhotos(remaining);
+    setSelectedTemplate(template);
+  };
+
+  const handleSave = async () => {
+    if (photoCount === 0) return;
+
+    setIsSaving(true);
     try {
-      // Pass the preview URLs to the generator
-      // Note: In a real app with large original files, we might want to read the File objects directly
-      // but using the object URLs is efficient for client-side canvas drawing.
-      const urls = files.map((f) => f.previewUrl);
-      const url = await generateCollage(urls);
-      setCollageUrl(url);
-      setIsModalOpen(true);
+      await saveCollage(selectedTemplate, photos);
     } catch (error) {
-      console.error('Failed to generate collage:', error);
-      alert('Failed to generate collage. Please try again.');
+      console.error('Failed to save collage:', error);
+      alert('Failed to save collage. Please try again.');
     } finally {
-      setIsGenerating(false);
+      setIsSaving(false);
     }
   };
 
+  const handleAddMorePhotos = () => {
+    setActiveSlotId(null);
+    fileInputRef.current?.click();
+  };
+
+  const canSave = photoCount > 0;
+
   return (
-    <main className="min-h-screen pb-32 font-[family-name:var(--font-sans)] bg-slate-50 text-slate-900">
-      <div className="max-w-6xl mx-auto p-4 sm:p-8 space-y-8">
-        {/* Header */}
-        <header className="text-center space-y-4 pt-8">
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">
-            Photo Grouper
-          </h1>
-          <p className="text-lg text-slate-500 max-w-2xl mx-auto">
-            Drag and drop your photos to arrange them into a beautiful collage.
-            <br />
-            <span className="text-sm opacity-75">
-              Private & Local-first. No cloud uploads.
-            </span>
+    <main className="h-screen flex flex-col bg-slate-900 text-white">
+      {/* Hidden file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileInput}
+        className="hidden"
+        multiple
+        accept="image/*"
+      />
+
+      {/* Header */}
+      <header className="flex items-center justify-between px-4 py-3 bg-slate-800/50 backdrop-blur-sm border-b border-slate-700">
+        <div className="flex items-center gap-3">
+          <ImageIcon className="w-6 h-6 text-blue-400" />
+          <h1 className="text-lg font-semibold">Collage</h1>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Add more photos button */}
+          <button
+            onClick={handleAddMorePhotos}
+            className="p-2.5 hover:bg-slate-700 rounded-full transition-colors"
+            title="Add more photos"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+
+          {/* Save/Share button */}
+          <button
+            onClick={handleSave}
+            disabled={!canSave || isSaving}
+            className={`
+              flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-all
+              ${canSave
+                ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                : 'bg-slate-700 text-slate-400 cursor-not-allowed'
+              }
+            `}
+          >
+            {isSaving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Share className="w-4 h-4" />
+            )}
+            <span className="hidden sm:inline">{isSaving ? 'Saving...' : 'Share'}</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Main Canvas Area */}
+      <CollageCanvas
+        template={selectedTemplate}
+        photos={photos}
+        onAddPhoto={handleAddPhoto}
+        onRemovePhoto={handleRemovePhoto}
+      />
+
+      {/* Available Photos Strip (if any) */}
+      {availablePhotos.length > 0 && (
+        <div className="px-4 py-2 bg-slate-800/50 border-t border-slate-700">
+          <p className="text-xs text-slate-400 mb-2">
+            {availablePhotos.length} more {availablePhotos.length === 1 ? 'photo' : 'photos'} available
           </p>
-        </header>
-
-        {/* Drop Zone */}
-        <section>
-          <DropZone onFilesDropped={handleFilesDropped} />
-        </section>
-
-        {/* File Grid */}
-        {files.length > 0 && (
-          <section className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-xl font-semibold text-slate-700 px-1">
-              Selected Photos ({files.length})
-            </h2>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {files.map((item, index) => (
-                <div
-                  key={`${item.file.name}-${index}`}
-                  className="group relative aspect-square bg-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all"
-                >
-                  <Image
-                    src={item.previewUrl}
-                    alt={item.file.name}
-                    fill
-                    className="object-cover"
-                  />
-
-                  {/* Overlay Gradient */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-                  {/* Remove Button */}
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="absolute top-2 right-2 p-2 bg-black/50 hover:bg-red-500 text-white rounded-full backdrop-blur-sm transition-all transform hover:scale-110"
-                    aria-label={`Remove ${item.file.name}`}
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-
-                  <div className="absolute bottom-2 left-2 right-2 text-white text-xs truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                    {item.file.name}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-      </div>
-
-      {/* Sticky Actions Footer */}
-      {files.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-200 shadow-lg z-50">
-          <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
-            <button
-              onClick={() => {
-                files.forEach((f) => URL.revokeObjectURL(f.previewUrl));
-                setFiles([]);
-              }}
-              className="flex items-center gap-2 px-6 py-3 text-red-600 font-medium rounded-full hover:bg-red-50 transition-colors"
-            >
-              <Trash2 className="w-5 h-5" />
-              <span className="hidden sm:inline">Clear All</span>
-              <span className="sm:hidden">Clear</span>
-            </button>
-            <button
-              onClick={handleGenerateCollage}
-              disabled={isGenerating}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-full shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isGenerating ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Download className="w-5 h-5" />
-              )}
-              <span>{isGenerating ? 'Generating...' : 'Download Collage'}</span>
-            </button>
+          <div className="flex gap-2 overflow-x-auto">
+            {availablePhotos.map((photo, index) => (
+              <button
+                key={index}
+                onClick={() => {
+                  // Find first empty slot and fill it
+                  const emptySlot = selectedTemplate.slots.find((s) => !photos.has(s.id));
+                  if (emptySlot) {
+                    setPhotos((prev) => {
+                      const newMap = new Map(prev);
+                      newMap.set(emptySlot.id, photo);
+                      return newMap;
+                    });
+                    setAvailablePhotos((prev) => prev.filter((_, i) => i !== index));
+                  }
+                }}
+                className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden ring-2 ring-slate-600 hover:ring-blue-400 transition-all"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.previewUrl}
+                  alt=""
+                  className="w-full h-full object-cover"
+                />
+              </button>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Preview Modal */}
-      <CollageModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        imageUrl={collageUrl}
-      />
+      {/* Template Strip */}
+      <div className="bg-slate-800 border-t border-slate-700">
+        <div className="px-4 pt-3 pb-1">
+          <p className="text-xs text-slate-400">Choose layout</p>
+        </div>
+        <TemplateStrip
+          templates={TEMPLATES}
+          selectedId={selectedTemplate.id}
+          onSelect={handleTemplateChange}
+        />
+        {/* Safe area padding for notch devices */}
+        <div className="h-2 sm:h-4" />
+      </div>
     </main>
   );
 }

@@ -1,131 +1,139 @@
 /**
- * Generates a collage from a list of image URLs.
- * Returns a Promise that resolves to a Blob URL of the generated image.
+ * Collage Generator - exports final collage image
  */
-export async function generateCollage(imageUrls: string[]): Promise<string> {
-    if (imageUrls.length === 0) return '';
 
-    const count = imageUrls.length;
-    // Calculate grid dimensions
-    // For 4 images: sqrt(4) = 2 cols.
-    // For 5 images: sqrt(5) ~ 2.23 -> 3 cols.
-    const cols = Math.ceil(Math.sqrt(count));
-    const rows = Math.ceil(count / cols);
+import { CollageTemplate } from './templates';
 
-    const CANVAS_WIDTH = 2000;
-    // Calculate height based on rows/cols ratio assuming square cells
-    // If we want square cells, width / cols = cellWidth. 
-    // Height = rows * cellWidth.
-    const cellWidth = CANVAS_WIDTH / cols;
-    const cellHeight = cellWidth; // Make cells square
-    const CANVAS_HEIGHT = rows * cellHeight;
+interface PhotoData {
+  file: File;
+  previewUrl: string;
+}
 
-    const PADDING = 20; // White border size
+const EXPORT_WIDTH = 2000;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = CANVAS_WIDTH;
-    canvas.height = CANVAS_HEIGHT;
-    const ctx = canvas.getContext('2d');
+/**
+ * Load an image from URL
+ */
+const loadImage = (url: string): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+};
 
-    if (!ctx) {
-        throw new Error('Could not get canvas context');
-    }
+/**
+ * Draw an image with cover behavior
+ */
+function drawImageCover(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+) {
+  const iw = img.width;
+  const ih = img.height;
 
-    // Fill background with white
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  const scale = Math.max(w / iw, h / ih);
+  const nw = iw * scale;
+  const nh = ih * scale;
 
-    const loadImage = (url: string): Promise<HTMLImageElement> => {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => resolve(img);
-            img.onerror = reject;
-            img.src = url;
-        });
-    };
+  const sx = (iw - w / scale) / 2;
+  const sy = (ih - h / scale) / 2;
+  const sw = w / scale;
+  const sh = h / scale;
 
-    const images = await Promise.all(imageUrls.map(loadImage));
-
-    images.forEach((img, index) => {
-        const col = index % cols;
-        const row = Math.floor(index / cols);
-
-        const x = col * cellWidth;
-        const y = row * cellHeight;
-        const w = cellWidth;
-        const h = cellHeight;
-
-        // Apply padding
-        const innerX = x + PADDING / 2;
-        const innerY = y + PADDING / 2;
-        const innerW = w - PADDING;
-        const innerH = h - PADDING;
-
-        // Draw Image with "object-cover" behavior
-        drawImageProp(ctx, img, innerX, innerY, innerW, innerH);
-    });
-
-    return new Promise((resolve, reject) => {
-        canvas.toBlob((blob) => {
-            if (blob) {
-                resolve(URL.createObjectURL(blob));
-            } else {
-                reject(new Error('Canvas to Blob failed'));
-            }
-        }, 'image/jpeg', 0.9);
-    });
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
 }
 
 /**
- * Helper to draw an image covering a target area (like CSS object-fit: cover)
+ * Generate final collage image from template and photos
  */
-function drawImageProp(
-    ctx: CanvasRenderingContext2D,
-    img: HTMLImageElement,
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    offsetX: number = 0.5,
-    offsetY: number = 0.5
-) {
-    // defaulting offset to center (0.5)
-    if (arguments.length < 2) {
-        throw new Error('drawImageProp requires context and image');
+export async function generateCollage(
+  template: CollageTemplate,
+  photos: Map<string, PhotoData>
+): Promise<string> {
+  const canvasWidth = EXPORT_WIDTH;
+  const canvasHeight = EXPORT_WIDTH / template.aspectRatio;
+  const gap = 8; // Gap between photos
+
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const ctx = canvas.getContext('2d')!;
+
+  // White background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // Draw each slot
+  for (const slot of template.slots) {
+    const photo = photos.get(slot.id);
+    if (!photo) continue;
+
+    const x = (slot.x / 100) * canvasWidth + gap / 2;
+    const y = (slot.y / 100) * canvasHeight + gap / 2;
+    const w = (slot.width / 100) * canvasWidth - gap;
+    const h = (slot.height / 100) * canvasHeight - gap;
+
+    try {
+      const img = await loadImage(photo.previewUrl);
+      drawImageCover(ctx, img, x, y, w, h);
+    } catch (error) {
+      console.error('Failed to load image:', error);
+      // Draw placeholder
+      ctx.fillStyle = '#e2e8f0';
+      ctx.fillRect(x, y, w, h);
     }
+  }
 
-    const iw = img.width,
-        ih = img.height,
-        r = Math.min(w / iw, h / ih);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) {
+        resolve(URL.createObjectURL(blob));
+      } else {
+        reject(new Error('Canvas to Blob failed'));
+      }
+    }, 'image/jpeg', 0.92);
+  });
+}
 
-    let nw = iw * r, // new prop. width
-        nh = ih * r, // new prop. height
-        cx: number,
-        cy: number,
-        cw: number,
-        ch: number,
-        ar: number = 1;
+/**
+ * Download or share the collage
+ */
+export async function saveCollage(
+  template: CollageTemplate,
+  photos: Map<string, PhotoData>
+): Promise<void> {
+  const url = await generateCollage(template, photos);
 
-    // decide which gap to fill
-    if (nw < w) ar = w / nw;
-    if (Math.abs(ar - 1) < 1e-14 && nh < h) ar = h / nh; // updated
+  // Try native share on mobile
+  if (navigator.share) {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const file = new File([blob], 'photo-collage.jpg', { type: 'image/jpeg' });
+      await navigator.share({
+        files: [file],
+        title: 'Photo Collage',
+      });
+      URL.revokeObjectURL(url);
+      return;
+    } catch (error) {
+      console.warn('Share failed, falling back to download:', error);
+    }
+  }
 
-    nw *= ar;
-    nh *= ar;
-
-    // calc source rectangle
-    cw = iw / (nw / w);
-    ch = ih / (nh / h);
-
-    cx = (iw - cw) * offsetX;
-    cy = (ih - ch) * offsetY;
-
-    // make sure source rectangle is valid
-    if (cx < 0) cx = 0;
-    if (cy < 0) cy = 0;
-    if (cw > iw) cw = iw;
-    if (ch > ih) ch = ih;
-
-    ctx.drawImage(img, cx, cy, cw, ch, x, y, w, h);
+  // Fallback to download
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'photo-collage.jpg';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
