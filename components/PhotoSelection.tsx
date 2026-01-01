@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Plus, X, Sparkles } from 'lucide-react';
+import { Plus, X, Sparkles, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
 interface PhotoData {
@@ -15,6 +15,8 @@ interface PhotoSelectionProps {
     onAddPhotos: () => void;
     onRemovePhoto: (index: number) => void;
     onGroupIt: () => void;
+    isProcessing?: boolean;
+    processingProgress?: { current: number; total: number };
 }
 
 export default function PhotoSelection({
@@ -23,12 +25,29 @@ export default function PhotoSelection({
     onAddPhotos,
     onRemovePhoto,
     onGroupIt,
+    isProcessing = false,
+    processingProgress = { current: 0, total: 0 },
 }: PhotoSelectionProps) {
     const canAddMore = photos.length < maxPhotos;
     const canGroupIt = photos.length >= 2;
 
     return (
-        <div className="min-h-screen flex flex-col bg-slate-50">
+        <div className="min-h-screen flex flex-col bg-slate-50 relative">
+            {/* Processing Overlay */}
+            {isProcessing && (
+                <div className="absolute inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+                    <Loader2 className="w-12 h-12 text-white animate-spin" />
+                    <div className="text-center">
+                        <p className="text-white text-lg font-semibold">Optimizing photos...</p>
+                        {processingProgress.total > 1 && (
+                            <p className="text-slate-300 text-sm mt-1">
+                                {processingProgress.current} of {processingProgress.total}
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <header className="flex items-center justify-between px-4 py-4 bg-white border-b border-slate-200">
                 <h1 className="text-lg font-semibold text-slate-800">Select Photos</h1>

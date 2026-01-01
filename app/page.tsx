@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import imageCompression from 'browser-image-compression';
 import HomePage from '@/components/HomePage';
 import PhotoSelection from '@/components/PhotoSelection';
 import CollageEditor from '@/components/CollageEditor';
@@ -30,6 +31,10 @@ export default function Home() {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Processing state for image compression
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0 });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Cleanup URLs on unmount
@@ -45,7 +50,7 @@ export default function Home() {
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInput = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
 
     const files = Array.from(e.target.files)
@@ -54,25 +59,58 @@ export default function Home() {
 
     if (files.length === 0) return;
 
-    const newPhotos = files.map((file) => ({
-      file,
-      previewUrl: URL.createObjectURL(file),
-    }));
+    // Move to selection phase immediately if on home
+    if (phase === 'home') {
+      setPhase('selection');
+    }
 
+    // Reset file input early
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    // Start processing
+    setIsProcessing(true);
+    setProcessingProgress({ current: 0, total: files.length });
+
+    // Compression options
+    const compressionOptions = {
+      maxSizeMB: 1.5,
+      maxWidthOrHeight: 1920,
+      useWebWorker: true,
+    };
+
+    const newPhotos: PhotoData[] = [];
+
+    // Compress each file
+    for (let i = 0; i < files.length; i++) {
+      setProcessingProgress({ current: i + 1, total: files.length });
+
+      try {
+        const compressedFile = await imageCompression(files[i], compressionOptions);
+        newPhotos.push({
+          file: compressedFile,
+          previewUrl: URL.createObjectURL(compressedFile),
+        });
+      } catch (error) {
+        console.error('Failed to compress image:', error);
+        // Fall back to original file if compression fails
+        newPhotos.push({
+          file: files[i],
+          previewUrl: URL.createObjectURL(files[i]),
+        });
+      }
+    }
+
+    // Update photos state
     setPhotos((prev) => {
       const combined = [...prev, ...newPhotos].slice(0, MAX_PHOTOS);
       return combined;
     });
 
-    // Move to selection phase if on home
-    if (phase === 'home') {
-      setPhase('selection');
-    }
-
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    // Done processing
+    setIsProcessing(false);
+    setProcessingProgress({ current: 0, total: 0 });
   }, [phase, photos.length]);
 
   const handleRemovePhoto = useCallback((index: number) => {
@@ -204,6 +242,8 @@ export default function Home() {
           onAddPhotos={handleSelectPhotos}
           onRemovePhoto={handleRemovePhoto}
           onGroupIt={handleGroupIt}
+          isProcessing={isProcessing}
+          processingProgress={processingProgress}
         />
       )}
 
