@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Photo Grouper",
   description: "Create beautiful photo collages with privacy-first design",
-  manifest: "/manifest.json",
+  manifest: "/site.webmanifest",
   themeColor: "#1a1a2e",
   appleWebApp: {
     capable: true,
@@ -23,8 +23,8 @@ export const metadata: Metadata = {
     title: "Photo Grouper",
   },
   icons: {
-    icon: "/icon-192x192.png",
-    apple: "/icon-192x192.png",
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
 };
 
