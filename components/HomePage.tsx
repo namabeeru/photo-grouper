@@ -19,7 +19,7 @@ export default function HomePage({ onSelectPhotos }: HomePageProps) {
                         alt="Photo Grouper"
                         width={200}
                         height={200}
-                        className="mx-auto drop-shadow-xl"
+                        className="mx-auto mix-blend-multiply"
                         priority
                     />
                 </div>
