@@ -14,9 +14,33 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Photo Grouper",
-  description: "Create beautiful photo collages with privacy-first design",
+  description: "Create beautiful photo collages with privacy-first design. Your photos stay on your device - zero cloud uploads, ever.",
   manifest: "/site.webmanifest",
   themeColor: "#1a1a2e",
+  keywords: ["photo collage", "photo grouper", "collage maker", "privacy", "offline", "photo editor"],
+  authors: [{ name: "Photo Grouper" }],
+  creator: "Photo Grouper",
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    siteName: "Photo Grouper",
+    title: "Photo Grouper - Create Beautiful Photo Collages",
+    description: "Create stunning photo collages with complete privacy. Your photos never leave your device.",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Photo Grouper - Privacy-first photo collage maker",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Photo Grouper - Create Beautiful Photo Collages",
+    description: "Create stunning photo collages with complete privacy. Your photos never leave your device.",
+    images: ["/og-image.png"],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
