@@ -238,6 +238,15 @@ export default function Home() {
     setPhase('selection');
   }, []);
 
+  const handleBackToHome = useCallback(() => {
+    photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    setPhotos([]);
+    setPhotoAssignments(new Map());
+    setSlotEdits(new Map());
+    setSelectedSlot(null);
+    setPhase('home');
+  }, [photos]);
+
   // ===== RENDER =====
 
   return (
@@ -262,6 +271,7 @@ export default function Home() {
           onAddPhotos={handleSelectPhotos}
           onRemovePhoto={handleRemovePhoto}
           onGroupIt={handleGroupIt}
+          onBack={handleBackToHome}
           isProcessing={isProcessing}
           processingProgress={processingProgress}
         />

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import {
     ArrowLeft, Download, Loader2, RotateCcw, Repeat2,
@@ -8,7 +8,7 @@ import {
     RotateCw, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeftIcon, ArrowRightIcon,
     Check, X,
 } from 'lucide-react';
-import { CollageTemplate } from '@/utils/templates';
+import { CollageTemplate, SlotPosition } from '@/utils/templates';
 import {
     PhotoEdits,
     DEFAULT_EDITS,
@@ -94,6 +94,12 @@ export default function CollageEditor({
         onSlotClick(slotId);
     }, [swapSource, onSwapSlots, onSlotClick]);
 
+    // Long-press on a slot enters swap mode targeting that slot.
+    const handleSlotLongPress = useCallback((slotId: string) => {
+        onSlotClick(slotId);  // also select it so the user sees which is active
+        setSwapSource(slotId);
+    }, [onSlotClick]);
+
     const beginSwap = useCallback(() => {
         if (!selectedSlot) return;
         setSwapSource(selectedSlot);
@@ -150,48 +156,22 @@ export default function CollageEditor({
                             const isSelected = selectedSlot === slot.id && !swapSource;
                             const isSwapSource = swapSource === slot.id;
                             const edits = slotEdits.get(slot.id) ?? DEFAULT_EDITS;
-                            const halfGap = collageStyle.gap / 2;
 
                             return (
-                                <button
+                                <EditableSlot
                                     key={slot.id}
-                                    onClick={() => handleSlotPress(slot.id)}
-                                    className={`absolute transition-all duration-150 ${isSelected ? 'z-10' : ''}`}
-                                    style={{
-                                        left: `${slot.x}%`,
-                                        top: `${slot.y}%`,
-                                        width: `${slot.width}%`,
-                                        height: `${slot.height}%`,
-                                        padding: halfGap,
-                                    }}
-                                >
-                                    <div
-                                        className={`relative w-full h-full overflow-hidden bg-slate-200 transition-all
-                                            ${isSelected ? 'ring-4 ring-blue-500' : ''}
-                                            ${isSwapSource ? 'ring-4 ring-amber-400' : ''}`}
-                                        style={{ borderRadius: collageStyle.cornerRadius }}
-                                    >
-                                        {photo && (
-                                            <div
-                                                className="absolute inset-0"
-                                                style={{
-                                                    transform: editsToTransform(edits),
-                                                    filter: editsToCssFilter(edits),
-                                                    transformOrigin: 'center center',
-                                                    willChange: 'transform, filter',
-                                                }}
-                                            >
-                                                <Image
-                                                    src={photo.previewUrl}
-                                                    alt=""
-                                                    fill
-                                                    className="object-cover pointer-events-none"
-                                                    sizes="(max-width: 768px) 100vw, 50vw"
-                                                />
-                                            </div>
-                                        )}
-                                    </div>
-                                </button>
+                                    slot={slot}
+                                    photo={photo}
+                                    edits={edits}
+                                    isSelected={isSelected}
+                                    isSwapSource={isSwapSource}
+                                    swapModeActive={!!swapSource}
+                                    cornerRadius={collageStyle.cornerRadius}
+                                    halfGap={collageStyle.gap / 2}
+                                    onTap={() => handleSlotPress(slot.id)}
+                                    onLongPress={() => handleSlotLongPress(slot.id)}
+                                    onEditsChange={(updates) => onUpdateSlotEdits(slot.id, updates)}
+                                />
                             );
                         })}
                     </div>
@@ -435,13 +415,13 @@ function FiltersTab({
 
     return (
         <div className="px-4 py-3">
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between gap-3 mb-3">
                 <p className="text-xs text-slate-400 uppercase tracking-wide">Filters</p>
                 <button
                     onClick={() => onApplyAll(currentFilter)}
-                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold shadow-sm transition-colors"
                 >
-                    <Check className="w-3.5 h-3.5" />
+                    <Check className="w-4 h-4" />
                     Apply to all
                 </button>
             </div>
@@ -545,4 +525,217 @@ function isLight(hex: string): boolean {
     const b = parseInt(m.slice(4, 6), 16);
     const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
     return luma > 0.6;
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+    return Math.max(lo, Math.min(hi, v));
+}
+
+/**
+ * Slot with pointer-event based gestures:
+ * - tap                → onTap (used for select / swap-target)
+ * - long-press (450ms) → onLongPress (enter swap mode for this slot)
+ * - 1-finger drag      → pan (offsetX/Y)
+ * - 2-finger pinch     → zoom (scale)
+ * - 2-finger twist     → rotation
+ * - 2-finger midpoint  → pan
+ *
+ * Gestures are disabled while a swap is in progress (tap-only) so the user
+ * can complete the swap without accidentally panning.
+ */
+function EditableSlot({
+    slot, photo, edits, isSelected, isSwapSource, swapModeActive,
+    cornerRadius, halfGap,
+    onTap, onLongPress, onEditsChange,
+}: {
+    slot: SlotPosition;
+    photo: PhotoData | null;
+    edits: PhotoEdits;
+    isSelected: boolean;
+    isSwapSource: boolean;
+    swapModeActive: boolean;
+    cornerRadius: number;
+    halfGap: number;
+    onTap: () => void;
+    onLongPress: () => void;
+    onEditsChange: (updates: Partial<PhotoEdits>) => void;
+}) {
+    const innerRef = useRef<HTMLDivElement>(null);
+
+    // Mirror props so gesture handlers always read the latest values.
+    const editsRef = useRef(edits);
+    useEffect(() => { editsRef.current = edits; }, [edits]);
+    const swapModeRef = useRef(swapModeActive);
+    useEffect(() => { swapModeRef.current = swapModeActive; }, [swapModeActive]);
+
+    const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+    const gestureRef = useRef<{
+        moved: boolean;
+        longPressed: boolean;
+        longPressTimer: number | null;
+    }>({ moved: false, longPressed: false, longPressTimer: null });
+
+    const cancelLongPress = useCallback(() => {
+        if (gestureRef.current.longPressTimer !== null) {
+            window.clearTimeout(gestureRef.current.longPressTimer);
+            gestureRef.current.longPressTimer = null;
+        }
+    }, []);
+
+    // Clear any pending timer if the component unmounts mid-gesture.
+    useEffect(() => () => cancelLongPress(), [cancelLongPress]);
+
+    const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+        const ptrs = pointersRef.current;
+        ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+        if (swapModeRef.current) return;  // swap mode: tap-only
+
+        if (ptrs.size === 1) {
+            gestureRef.current.moved = false;
+            gestureRef.current.longPressed = false;
+            cancelLongPress();
+            gestureRef.current.longPressTimer = window.setTimeout(() => {
+                if (!gestureRef.current.moved && !swapModeRef.current) {
+                    gestureRef.current.longPressed = true;
+                    onLongPress();
+                }
+            }, 450);
+        } else if (ptrs.size >= 2) {
+            // Second finger landed — drop the long-press intent.
+            cancelLongPress();
+        }
+    };
+
+    const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+        const ptrs = pointersRef.current;
+        if (!ptrs.has(e.pointerId)) return;
+        if (swapModeRef.current) return;
+
+        const prev = ptrs.get(e.pointerId)!;
+        const curr = { x: e.clientX, y: e.clientY };
+        const dx = curr.x - prev.x;
+        const dy = curr.y - prev.y;
+
+        if (!gestureRef.current.moved) {
+            if (Math.abs(dx) + Math.abs(dy) < 6) return;  // dead zone
+            gestureRef.current.moved = true;
+            cancelLongPress();
+        }
+
+        const rect = innerRef.current?.getBoundingClientRect();
+        if (!rect || rect.width === 0 || rect.height === 0) {
+            ptrs.set(e.pointerId, curr);
+            return;
+        }
+
+        const e0 = editsRef.current;
+
+        if (ptrs.size === 1) {
+            const offsetX = clamp(e0.offsetX + (dx / rect.width) * 100, -50, 50);
+            const offsetY = clamp(e0.offsetY + (dy / rect.height) * 100, -50, 50);
+            onEditsChange({ offsetX, offsetY });
+        } else if (ptrs.size === 2) {
+            let other: { x: number; y: number } | null = null;
+            for (const [id, pos] of ptrs) {
+                if (id !== e.pointerId) { other = pos; break; }
+            }
+            if (other) {
+                const oldDist = Math.hypot(other.x - prev.x, other.y - prev.y);
+                const newDist = Math.hypot(other.x - curr.x, other.y - curr.y);
+                const scaleFactor = oldDist > 1 ? newDist / oldDist : 1;
+                const newScale = clamp(e0.scale * scaleFactor, 1, 3);
+
+                const oldAngle = Math.atan2(other.y - prev.y, other.x - prev.x);
+                const newAngle = Math.atan2(other.y - curr.y, other.x - curr.x);
+                let angleDelta = ((newAngle - oldAngle) * 180) / Math.PI;
+                if (angleDelta > 180) angleDelta -= 360;
+                if (angleDelta < -180) angleDelta += 360;
+                const newRotation = e0.rotation + angleDelta;
+
+                // Midpoint pan: this finger's delta contributes half to the midpoint shift.
+                const offsetX = clamp(e0.offsetX + (dx / 2 / rect.width) * 100, -50, 50);
+                const offsetY = clamp(e0.offsetY + (dy / 2 / rect.height) * 100, -50, 50);
+
+                onEditsChange({ scale: newScale, rotation: newRotation, offsetX, offsetY });
+            }
+        }
+
+        ptrs.set(e.pointerId, curr);
+    };
+
+    const handlePointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+        const ptrs = pointersRef.current;
+        if (ptrs.has(e.pointerId)) ptrs.delete(e.pointerId);
+
+        if (ptrs.size === 0) {
+            const isSwapMode = swapModeRef.current;
+            const { moved, longPressed } = gestureRef.current;
+            cancelLongPress();
+            gestureRef.current.moved = false;
+            gestureRef.current.longPressed = false;
+
+            // Tap fires when:
+            //   - we're in swap mode (any tap on a slot performs/cancels the swap), OR
+            //   - the gesture neither moved nor long-pressed.
+            if (isSwapMode || (!moved && !longPressed)) {
+                onTap();
+            }
+        }
+    };
+
+    return (
+        <div
+            className={`absolute transition-all duration-150 ${isSelected ? 'z-10' : ''}`}
+            style={{
+                left: `${slot.x}%`,
+                top: `${slot.y}%`,
+                width: `${slot.width}%`,
+                height: `${slot.height}%`,
+                padding: halfGap,
+            }}
+        >
+            <div
+                ref={innerRef}
+                role="button"
+                tabIndex={0}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerEnd}
+                onPointerCancel={handlePointerEnd}
+                onContextMenu={(e) => e.preventDefault()}
+                className={`relative w-full h-full overflow-hidden bg-slate-200 transition-all select-none cursor-pointer
+                    ${isSelected ? 'ring-4 ring-blue-500' : ''}
+                    ${isSwapSource ? 'ring-4 ring-amber-400' : ''}`}
+                style={{
+                    borderRadius: cornerRadius,
+                    touchAction: 'none',
+                    WebkitTouchCallout: 'none',
+                    WebkitUserSelect: 'none',
+                }}
+            >
+                {photo && (
+                    <div
+                        className="absolute inset-0"
+                        style={{
+                            transform: editsToTransform(edits),
+                            filter: editsToCssFilter(edits),
+                            transformOrigin: 'center center',
+                            willChange: 'transform, filter',
+                        }}
+                    >
+                        <Image
+                            src={photo.previewUrl}
+                            alt=""
+                            fill
+                            className="object-cover pointer-events-none"
+                            sizes="(max-width: 768px) 100vw, 50vw"
+                            draggable={false}
+                        />
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Plus, X, Sparkles, Loader2 } from 'lucide-react';
+import { Plus, X, Sparkles, Loader2, ChevronLeft } from 'lucide-react';
 import Image from 'next/image';
 
 interface PhotoData {
@@ -15,6 +15,7 @@ interface PhotoSelectionProps {
     onAddPhotos: () => void;
     onRemovePhoto: (index: number) => void;
     onGroupIt: () => void;
+    onBack: () => void;
     isProcessing?: boolean;
     processingProgress?: { current: number; total: number };
 }
@@ -25,6 +26,7 @@ export default function PhotoSelection({
     onAddPhotos,
     onRemovePhoto,
     onGroupIt,
+    onBack,
     isProcessing = false,
     processingProgress = { current: 0, total: 0 },
 }: PhotoSelectionProps) {
@@ -49,8 +51,15 @@ export default function PhotoSelection({
             )}
 
             {/* Header */}
-            <header className="flex items-center justify-between px-4 py-4 bg-white border-b border-slate-200">
-                <h1 className="text-lg font-semibold text-slate-800">Select Photos</h1>
+            <header className="flex items-center px-4 py-4 bg-white border-b border-slate-200">
+                <button
+                    onClick={onBack}
+                    aria-label="Back to home"
+                    className="-ml-1.5 p-1.5 rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
+                >
+                    <ChevronLeft className="w-5 h-5" />
+                </button>
+                <h1 className="ml-1.5 flex-1 text-lg font-semibold text-slate-800">Select Photos</h1>
                 <span className="text-sm text-slate-500">
                     {photos.length} of {maxPhotos}
                 </span>
