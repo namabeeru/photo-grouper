@@ -21,7 +21,7 @@ export default function HomePage({ onSelectPhotos }: HomePageProps) {
                 {/* Hero Logo */}
                 <div className="mb-6">
                     <Image
-                        src="/logo.png"
+                        src="/logo.svg"
                         alt="Photo Grouper"
                         width={400}
                         height={400}

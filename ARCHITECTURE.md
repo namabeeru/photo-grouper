@@ -46,6 +46,7 @@ photo-grouper/
 │   └── InstallPrompt.tsx   # PWA install prompt
 ├── utils/                  # Utility functions
 │   ├── templates.ts        # Collage template definitions
+│   ├── photoEdits.ts       # Per-slot edit + filter types and presets
 │   └── collageGenerator.ts # Canvas-based collage rendering
 ├── public/                 # Static assets
 │   ├── site.webmanifest    # PWA manifest
@@ -88,15 +89,41 @@ The app operates as a **three-phase state machine**:
 
 ### 2. Collage Templates
 - Defined in `utils/templates.ts`
-- Support for 2-9 photos with multiple layout options
+- Support for 2-9 photos with many layout options each (~4-7 per count)
 - Each template has: `id`, `name`, `slots`, `aspectRatio`, `style`
 - Styles: `clean`, `polaroid`, `rounded`, `artistic`
 
-### 3. Canvas-Based Export
-- `utils/collageGenerator.ts` renders collages using HTML Canvas API
-- High-quality output saved directly to device
+### 3. Per-Photo Editing (Adjust tab)
+- Each slot can be tapped to open inline edit controls
+- Adjustments: rotation, zoom (scale), pan (offsetX/Y), brightness, contrast,
+  saturation, blur, and a `Swap photo` action
+- Edits are stored as a `Map<slotId, PhotoEdits>` in page-level state
+- Reset clears the slot back to defaults
+- Reassigning a layout resets all edits (slot IDs may not map cleanly)
 
-### 4. PWA Support
+### 4. Instagram-Style Filters (Filters tab)
+- Defined in `utils/photoEdits.ts` (`FILTER_OPTIONS`, `FILTER_PRESETS`)
+- Presets: Mono, Noir, Sepia, Vintage, Fade, Warm, Cool, Vivid, Dramatic,
+  Cinematic, Pastel, Lush, Matte (plus Original)
+- Live thumbnails per preset render the selected photo with the filter via
+  CSS `filter`
+- `Apply to all` propagates the active filter to every slot
+- Canvas export uses `ctx.filter` so JPEG output matches preview
+
+### 5. Collage Style (Style tab)
+- Background colour swatches + free colour picker
+- Sliders for photo gap, corner radius, outer padding
+- Stored as `CollageStyle` in page-level state, applied both in editor and
+  during export
+
+### 6. Canvas-Based Export
+- `utils/collageGenerator.ts` renders collages using HTML Canvas API
+- Replicates the CSS pipeline: cover-fit → translate → scale → rotate, then
+  applies `ctx.filter` and clips with rounded rects
+- Editor px values (gap/padding/radius) scale via
+  `EXPORT_WIDTH / REFERENCE_WIDTH (448)` so output matches preview
+
+### 7. PWA Support
 - Configured via `next-pwa` in `next.config.ts`
 - Service worker generated for offline capability
 - Web manifest at `/public/site.webmanifest`
@@ -111,7 +138,9 @@ The app operates as a **three-phase state machine**:
   - `phase`: Current app phase (`home` | `selection` | `editor`)
   - `photos`: Array of `PhotoData` objects with file & preview URL
   - `selectedTemplate`: Currently active collage template
-  - `photoAssignments`: Map of slot IDs to photo indices
+  - `photoAssignments`: `Map<slotId, photoIndex>`
+  - `slotEdits`: `Map<slotId, PhotoEdits>` — per-slot rotation/zoom/pan/filter
+  - `collageStyle`: `CollageStyle` — background, gap, corner radius, padding
 
 ---
 

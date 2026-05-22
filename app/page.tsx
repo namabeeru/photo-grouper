@@ -8,6 +8,7 @@ import CollageEditor from '@/components/CollageEditor';
 import InstallPrompt from '@/components/InstallPrompt';
 import { TEMPLATES, CollageTemplate, getDefaultTemplate, getTemplatesForPhotoCount } from '@/utils/templates';
 import { saveCollage } from '@/utils/collageGenerator';
+import { PhotoEdits, DEFAULT_EDITS, CollageStyle, DEFAULT_STYLE } from '@/utils/photoEdits';
 
 interface PhotoData {
   file: File;
@@ -30,6 +31,11 @@ export default function Home() {
   const [photoAssignments, setPhotoAssignments] = useState<Map<string, number>>(new Map());
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Edits keyed by slot id (only persisted as long as a template is in use)
+  const [slotEdits, setSlotEdits] = useState<Map<string, PhotoEdits>>(new Map());
+  // Collage-wide style
+  const [collageStyle, setCollageStyle] = useState<CollageStyle>(DEFAULT_STYLE);
 
   // Processing state for image compression
   const [isProcessing, setIsProcessing] = useState(false);
@@ -59,21 +65,17 @@ export default function Home() {
 
     if (files.length === 0) return;
 
-    // Move to selection phase immediately if on home
     if (phase === 'home') {
       setPhase('selection');
     }
 
-    // Reset file input early
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
 
-    // Start processing
     setIsProcessing(true);
     setProcessingProgress({ current: 0, total: files.length });
 
-    // Compression options
     const compressionOptions = {
       maxSizeMB: 1.5,
       maxWidthOrHeight: 1920,
@@ -82,7 +84,6 @@ export default function Home() {
 
     const newPhotos: PhotoData[] = [];
 
-    // Compress each file
     for (let i = 0; i < files.length; i++) {
       setProcessingProgress({ current: i + 1, total: files.length });
 
@@ -94,7 +95,6 @@ export default function Home() {
         });
       } catch (error) {
         console.error('Failed to compress image:', error);
-        // Fall back to original file if compression fails
         newPhotos.push({
           file: files[i],
           previewUrl: URL.createObjectURL(files[i]),
@@ -102,13 +102,11 @@ export default function Home() {
       }
     }
 
-    // Update photos state
     setPhotos((prev) => {
       const combined = [...prev, ...newPhotos].slice(0, MAX_PHOTOS);
       return combined;
     });
 
-    // Done processing
     setIsProcessing(false);
     setProcessingProgress({ current: 0, total: 0 });
   }, [phase, photos.length]);
@@ -125,77 +123,100 @@ export default function Home() {
 
   // ===== COLLAGE PHASE HANDLERS =====
 
-  const handleGroupIt = useCallback(() => {
-    if (photos.length < 2) return;
-
-    // Get best template for photo count
-    const template = getDefaultTemplate(photos.length);
-    setSelectedTemplate(template);
-
-    // Assign photos to slots
+  const initAssignments = (template: CollageTemplate, photoCount: number) => {
     const assignments = new Map<string, number>();
     template.slots.forEach((slot, index) => {
-      if (index < photos.length) {
+      if (index < photoCount) {
         assignments.set(slot.id, index);
       }
     });
-    setPhotoAssignments(assignments);
+    return assignments;
+  };
+
+  const handleGroupIt = useCallback(() => {
+    if (photos.length < 2) return;
+
+    const template = getDefaultTemplate(photos.length);
+    setSelectedTemplate(template);
+    setPhotoAssignments(initAssignments(template, photos.length));
+    setSlotEdits(new Map());
+    setCollageStyle(DEFAULT_STYLE);
     setSelectedSlot(null);
     setPhase('editor');
   }, [photos.length]);
 
   const handleTemplateSelect = useCallback((template: CollageTemplate) => {
     setSelectedTemplate(template);
-
-    // Reassign photos to new template slots
-    const assignments = new Map<string, number>();
-    template.slots.forEach((slot, index) => {
-      if (index < photos.length) {
-        assignments.set(slot.id, index);
-      }
-    });
-    setPhotoAssignments(assignments);
+    setPhotoAssignments(initAssignments(template, photos.length));
     setSelectedSlot(null);
+    // Reset edits when layout changes — slot IDs may not map cleanly.
+    setSlotEdits(new Map());
   }, [photos.length]);
 
+  // Click-to-select. If the same slot is tapped again it toggles off.
+  // Inline UI in the editor handles "swap" via an explicit action.
   const handleSlotClick = useCallback((slotId: string) => {
-    if (!selectedSlot) {
-      // First selection
-      setSelectedSlot(slotId);
-    } else if (selectedSlot === slotId) {
-      // Deselect
-      setSelectedSlot(null);
-    } else {
-      // Swap photos between slots
-      setPhotoAssignments((prev) => {
-        const newMap = new Map(prev);
-        const photo1 = prev.get(selectedSlot);
-        const photo2 = prev.get(slotId);
+    setSelectedSlot((prev) => (prev === slotId ? null : slotId));
+  }, []);
 
-        if (photo1 !== undefined) {
-          newMap.set(slotId, photo1);
-        } else {
-          newMap.delete(slotId);
-        }
+  const handleSwapSlots = useCallback((slotA: string, slotB: string) => {
+    setPhotoAssignments((prev) => {
+      const newMap = new Map(prev);
+      const p1 = prev.get(slotA);
+      const p2 = prev.get(slotB);
+      if (p1 !== undefined) newMap.set(slotB, p1); else newMap.delete(slotB);
+      if (p2 !== undefined) newMap.set(slotA, p2); else newMap.delete(slotA);
+      return newMap;
+    });
+    // Also swap edits so the visual edit follows the photo.
+    setSlotEdits((prev) => {
+      const newMap = new Map(prev);
+      const e1 = prev.get(slotA);
+      const e2 = prev.get(slotB);
+      if (e1) newMap.set(slotB, e1); else newMap.delete(slotB);
+      if (e2) newMap.set(slotA, e2); else newMap.delete(slotA);
+      return newMap;
+    });
+  }, []);
 
-        if (photo2 !== undefined) {
-          newMap.set(selectedSlot, photo2);
-        } else {
-          newMap.delete(selectedSlot);
-        }
+  const handleUpdateSlotEdits = useCallback((slotId: string, updates: Partial<PhotoEdits>) => {
+    setSlotEdits((prev) => {
+      const newMap = new Map(prev);
+      const current = prev.get(slotId) ?? DEFAULT_EDITS;
+      newMap.set(slotId, { ...current, ...updates });
+      return newMap;
+    });
+  }, []);
 
-        return newMap;
+  const handleResetSlotEdits = useCallback((slotId: string) => {
+    setSlotEdits((prev) => {
+      const newMap = new Map(prev);
+      newMap.delete(slotId);
+      return newMap;
+    });
+  }, []);
+
+  // Apply the same edit (filter/preset) to every slot.
+  const handleApplyEditToAll = useCallback((updates: Partial<PhotoEdits>) => {
+    setSlotEdits((prev) => {
+      const newMap = new Map(prev);
+      selectedTemplate.slots.forEach((slot) => {
+        const current = newMap.get(slot.id) ?? DEFAULT_EDITS;
+        newMap.set(slot.id, { ...current, ...updates });
       });
-      setSelectedSlot(null);
-    }
-  }, [selectedSlot]);
+      return newMap;
+    });
+  }, [selectedTemplate]);
+
+  const handleUpdateStyle = useCallback((updates: Partial<CollageStyle>) => {
+    setCollageStyle((prev) => ({ ...prev, ...updates }));
+  }, []);
 
   const handleSave = useCallback(async () => {
     if (photos.length === 0) return;
 
     setIsSaving(true);
     try {
-      // Convert assignments to the format expected by saveCollage
       const photosMap = new Map<string, PhotoData>();
       photoAssignments.forEach((photoIndex, slotId) => {
         if (photos[photoIndex]) {
@@ -203,14 +224,14 @@ export default function Home() {
         }
       });
 
-      await saveCollage(selectedTemplate, photosMap);
+      await saveCollage(selectedTemplate, photosMap, slotEdits, collageStyle);
     } catch (error) {
       console.error('Failed to save collage:', error);
       alert('Failed to save collage. Please try again.');
     } finally {
       setIsSaving(false);
     }
-  }, [photos, photoAssignments, selectedTemplate]);
+  }, [photos, photoAssignments, selectedTemplate, slotEdits, collageStyle]);
 
   const handleCancelEditor = useCallback(() => {
     setSelectedSlot(null);
@@ -221,7 +242,6 @@ export default function Home() {
 
   return (
     <>
-      {/* Hidden file input */}
       <input
         type="file"
         ref={fileInputRef}
@@ -254,9 +274,16 @@ export default function Home() {
           selectedTemplate={selectedTemplate}
           photoAssignments={photoAssignments}
           selectedSlot={selectedSlot}
+          slotEdits={slotEdits}
+          collageStyle={collageStyle}
           isSaving={isSaving}
           onTemplateSelect={handleTemplateSelect}
           onSlotClick={handleSlotClick}
+          onSwapSlots={handleSwapSlots}
+          onUpdateSlotEdits={handleUpdateSlotEdits}
+          onResetSlotEdits={handleResetSlotEdits}
+          onApplyEditToAll={handleApplyEditToAll}
+          onUpdateStyle={handleUpdateStyle}
           onSave={handleSave}
           onCancel={handleCancelEditor}
         />

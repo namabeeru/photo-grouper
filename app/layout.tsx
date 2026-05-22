@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   title: "Photo Grouper",
   description: "Create beautiful photo collages with privacy-first design. Your photos stay on your device - zero cloud uploads, ever.",
   manifest: "/site.webmanifest",
-  themeColor: "#1a1a2e",
+  themeColor: "#1E1B4B",
   keywords: ["photo collage", "photo grouper", "collage maker", "privacy", "offline", "photo editor"],
   authors: [{ name: "Photo Grouper" }],
   creator: "Photo Grouper",
