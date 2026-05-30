@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import {
-    ArrowLeft, Download, Loader2, RotateCcw,
+    ArrowLeft, Download, Loader2, RotateCcw, Repeat2,
     LayoutGrid, Sliders, Wand2, Palette, Crop,
     RotateCw, ZoomIn, ZoomOut, ArrowUp, ArrowDown, ArrowLeftIcon, ArrowRightIcon,
     Check, X, Hand,
@@ -52,21 +52,6 @@ interface CollageEditorProps {
 
 type Tab = 'layouts' | 'adjust' | 'filters' | 'format' | 'style';
 
-interface DragState {
-    sourceId: string;
-    photo: PhotoData | null;
-    edits: PhotoEdits;
-    x: number;
-    y: number;
-    targetId: string | null;
-}
-
-function slotIdAtPoint(x: number, y: number): string | null {
-    const el = document.elementFromPoint(x, y);
-    const slotEl = el?.closest('[data-slot-id]');
-    return slotEl?.getAttribute('data-slot-id') ?? null;
-}
-
 export default function CollageEditor({
     photos,
     templates,
@@ -89,7 +74,8 @@ export default function CollageEditor({
     onCancel,
 }: CollageEditorProps) {
     const [tab, setTab] = useState<Tab>('layouts');
-    const [drag, setDrag] = useState<DragState | null>(null);
+    // Slot currently "armed" to be swapped. Tapping another slot swaps them.
+    const [swapSource, setSwapSource] = useState<string | null>(null);
 
     const availableTemplates = useMemo(
         () => templates.filter((t) => t.slots.length === photos.length),
@@ -102,8 +88,30 @@ export default function CollageEditor({
         ? (slotEdits.get(selectedSlot) ?? DEFAULT_EDITS)
         : DEFAULT_EDITS;
 
+    // Changing layout drops the armed state (slot IDs may differ).
+    const handleTemplateSelect = useCallback((t: CollageTemplate) => {
+        setSwapSource(null);
+        onTemplateSelect(t);
+    }, [onTemplateSelect]);
+
     // ----- stable per-slot callbacks (so EditableSlot can be memoized) -----
     const handleTap = useCallback((slotId: string) => {
+        setSwapSource((prevSource) => {
+            if (prevSource) {
+                if (prevSource !== slotId) onSwapSlots(prevSource, slotId);
+                return null; // finalize or cancel the swap
+            }
+            onSlotClick(slotId);
+            return null;
+        });
+    }, [onSwapSlots, onSlotClick]);
+
+    const handleLongPress = useCallback((slotId: string) => {
+        // Arm this slot for swapping. Light haptic where supported.
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+            try { navigator.vibrate(12); } catch { /* ignore */ }
+        }
+        setSwapSource(slotId);
         onSlotClick(slotId);
     }, [onSlotClick]);
 
@@ -111,34 +119,11 @@ export default function CollageEditor({
         onUpdateSlotEdits(slotId, updates);
     }, [onUpdateSlotEdits]);
 
-    // ----- drag-to-swap orchestration -----
-    const handleSwapDragStart = useCallback((slotId: string, x: number, y: number) => {
-        const photoIndex = photoAssignments.get(slotId);
-        const photo = photoIndex !== undefined ? photos[photoIndex] ?? null : null;
-        const edits = slotEdits.get(slotId) ?? DEFAULT_EDITS;
-        setDrag({ sourceId: slotId, photo, edits, x, y, targetId: null });
-    }, [photoAssignments, photos, slotEdits]);
+    const armSwapFromButton = useCallback(() => {
+        if (selectedSlot) setSwapSource(selectedSlot);
+    }, [selectedSlot]);
 
-    const handleSwapDragMove = useCallback((x: number, y: number) => {
-        setDrag((prev) => {
-            if (!prev) return prev;
-            const overId = slotIdAtPoint(x, y);
-            const targetId = overId && overId !== prev.sourceId ? overId : null;
-            return { ...prev, x, y, targetId };
-        });
-    }, []);
-
-    const handleSwapDragEnd = useCallback((x: number, y: number) => {
-        setDrag((prev) => {
-            if (prev) {
-                const overId = slotIdAtPoint(x, y);
-                if (overId && overId !== prev.sourceId) {
-                    onSwapSlots(prev.sourceId, overId);
-                }
-            }
-            return null;
-        });
-    }, [onSwapSlots]);
+    const cancelSwap = useCallback(() => setSwapSource(null), []);
 
     return (
         <div className="min-h-screen flex flex-col bg-slate-900 text-white overflow-hidden">
@@ -162,6 +147,20 @@ export default function CollageEditor({
                 </button>
             </header>
 
+            {/* Swap banner */}
+            {swapSource && (
+                <div className="px-4 py-2.5 bg-amber-500 text-slate-900 text-sm font-medium flex items-center justify-center gap-2">
+                    <Repeat2 className="w-4 h-4" />
+                    Tap another photo to swap
+                    <button
+                        onClick={cancelSwap}
+                        className="ml-2 px-2 py-0.5 rounded-full bg-slate-900/15 hover:bg-slate-900/25 text-slate-900 font-semibold"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            )}
+
             {/* Main Collage View */}
             <div className="flex-1 flex flex-col items-center justify-center p-4 min-h-0">
                 <div
@@ -177,7 +176,7 @@ export default function CollageEditor({
                         {selectedTemplate.slots.map((slot) => {
                             const photoIndex = photoAssignments.get(slot.id);
                             const photo = photoIndex !== undefined ? photos[photoIndex] : null;
-                            const isSelected = selectedSlot === slot.id && !drag;
+                            const isSelected = selectedSlot === slot.id && !swapSource;
                             const edits = slotEdits.get(slot.id) ?? DEFAULT_EDITS;
 
                             return (
@@ -187,46 +186,23 @@ export default function CollageEditor({
                                     photo={photo}
                                     edits={edits}
                                     isSelected={isSelected}
-                                    isDragTarget={drag?.targetId === slot.id}
-                                    isDragSource={drag?.sourceId === slot.id}
+                                    isSwapSource={swapSource === slot.id}
+                                    swapArmed={!!swapSource && swapSource !== slot.id}
                                     cornerRadius={collageStyle.cornerRadius}
                                     halfGap={collageStyle.gap / 2}
                                     onTap={handleTap}
+                                    onLongPress={handleLongPress}
                                     onEditsChange={handleEditsChange}
-                                    onSwapDragStart={handleSwapDragStart}
-                                    onSwapDragMove={handleSwapDragMove}
-                                    onSwapDragEnd={handleSwapDragEnd}
                                 />
                             );
                         })}
                     </div>
-
-                    {/* Floating drag preview */}
-                    {drag?.photo && (
-                        <div
-                            className="fixed z-50 pointer-events-none rounded-xl overflow-hidden shadow-2xl ring-2 ring-white/80"
-                            style={{
-                                left: drag.x,
-                                top: drag.y,
-                                width: 96,
-                                height: 96,
-                                transform: 'translate(-50%, -50%) rotate(-4deg)',
-                            }}
-                        >
-                            <div
-                                className="absolute inset-0"
-                                style={{ filter: editsToCssFilter(drag.edits) }}
-                            >
-                                <Image src={drag.photo.previewUrl} alt="" fill className="object-cover" sizes="96px" />
-                            </div>
-                        </div>
-                    )}
                 </div>
 
                 {/* Gesture hint */}
-                <p className="mt-3 text-[11px] text-slate-500 text-center flex items-center gap-1.5">
-                    <Hand className="w-3.5 h-3.5" />
-                    Drag a photo onto another to swap · Pinch to zoom · Drag when zoomed to reposition
+                <p className="mt-3 text-[11px] text-slate-500 text-center flex items-center gap-1.5 px-4">
+                    <Hand className="w-3.5 h-3.5 flex-shrink-0" />
+                    Tap to select · Drag to reposition · Pinch to zoom · Long-press to swap
                 </p>
             </div>
 
@@ -246,7 +222,7 @@ export default function CollageEditor({
                         <LayoutsTab
                             templates={availableTemplates}
                             selectedTemplate={selectedTemplate}
-                            onTemplateSelect={onTemplateSelect}
+                            onTemplateSelect={handleTemplateSelect}
                         />
                     )}
                     {tab === 'adjust' && (
@@ -255,6 +231,7 @@ export default function CollageEditor({
                             edits={activeEdits}
                             onUpdate={(updates) => selectedSlot && onUpdateSlotEdits(selectedSlot, updates)}
                             onReset={() => selectedSlot && onResetSlotEdits(selectedSlot)}
+                            onArmSwap={armSwapFromButton}
                         />
                     )}
                     {tab === 'filters' && (
@@ -280,51 +257,57 @@ export default function CollageEditor({
 
 /* ============================== EditableSlot ============================== */
 
-const TAP_SLOP = 6;        // px of movement still treated as a tap
-const DRAG_THRESHOLD = 8;  // px before a press becomes a drag
+const TAP_SLOP = 8;          // px of movement still treated as a tap
+const DRAG_THRESHOLD = 8;    // px before a press becomes a pan
+const LONG_PRESS_MS = 400;   // hold time to arm a swap
 
 interface EditableSlotProps {
     slot: SlotPosition;
     photo: PhotoData | null;
     edits: PhotoEdits;
     isSelected: boolean;
-    isDragTarget: boolean;
-    isDragSource: boolean;
+    isSwapSource: boolean;
+    swapArmed: boolean; // some OTHER slot is armed → this slot is a swap target
     cornerRadius: number;
     halfGap: number;
     onTap: (slotId: string) => void;
+    onLongPress: (slotId: string) => void;
     onEditsChange: (slotId: string, updates: Partial<PhotoEdits>) => void;
-    onSwapDragStart: (slotId: string, x: number, y: number) => void;
-    onSwapDragMove: (x: number, y: number) => void;
-    onSwapDragEnd: (x: number, y: number) => void;
 }
 
 const EditableSlot = React.memo(function EditableSlot({
-    slot, photo, edits, isSelected, isDragTarget, isDragSource,
+    slot, photo, edits, isSelected, isSwapSource, swapArmed,
     cornerRadius, halfGap,
-    onTap, onEditsChange, onSwapDragStart, onSwapDragMove, onSwapDragEnd,
+    onTap, onLongPress, onEditsChange,
 }: EditableSlotProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const imgAspectRef = useRef<number>(0);
 
-    // Latest edits available to imperative gesture handlers.
     const editsRef = useRef(edits);
     useEffect(() => { editsRef.current = edits; }, [edits]);
 
     const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
     const gestureRef = useRef<{
-        mode: null | 'pan' | 'swap' | 'pinch';
+        mode: null | 'pan' | 'pinch';
         moved: boolean;
+        longPressed: boolean;
         startX: number;
         startY: number;
-    }>({ mode: null, moved: false, startX: 0, startY: 0 });
+        timer: number | null;
+    }>({ mode: null, moved: false, longPressed: false, startX: 0, startY: 0, timer: null });
 
     const slotId = slot.id;
 
-    // Re-clamp stored offsets whenever the photo could overflow differently:
-    // zoom change, image load, or slot resize (layout/aspect change). This is
-    // what lets a zoomed-in photo recover its edges when you zoom back out, and
-    // stops panning/format changes from revealing empty space.
+    const clearTimer = useCallback(() => {
+        if (gestureRef.current.timer !== null) {
+            window.clearTimeout(gestureRef.current.timer);
+            gestureRef.current.timer = null;
+        }
+    }, []);
+
+    // Re-clamp stored offsets when overflow could change (zoom / image load /
+    // slot resize) so panning never reveals empty space and zooming out brings
+    // pushed-off edges back into view.
     const reclamp = useCallback(() => {
         const rect = innerRef.current?.getBoundingClientRect();
         if (!rect || !imgAspectRef.current) return;
@@ -345,6 +328,8 @@ const EditableSlot = React.memo(function EditableSlot({
         return () => ro.disconnect();
     }, [reclamp]);
 
+    useEffect(() => () => clearTimer(), [clearTimer]);
+
     const applyPan = (dxPx: number, dyPx: number) => {
         const rect = innerRef.current?.getBoundingClientRect();
         if (!rect || rect.width === 0 || rect.height === 0) return;
@@ -356,18 +341,22 @@ const EditableSlot = React.memo(function EditableSlot({
     };
 
     const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-        if (!photo) { /* empty slot: allow tap only */ }
         try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
         const ptrs = pointersRef.current;
         ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
         if (ptrs.size === 1) {
-            gestureRef.current = { mode: null, moved: false, startX: e.clientX, startY: e.clientY };
-        } else if (ptrs.size === 2) {
-            // A pinch supersedes any pan/swap that may have started.
-            if (gestureRef.current.mode === 'swap') {
-                onSwapDragEnd(e.clientX, e.clientY); // cancel the swap cleanly
+            gestureRef.current = { mode: null, moved: false, longPressed: false, startX: e.clientX, startY: e.clientY, timer: null };
+            if (photo) {
+                gestureRef.current.timer = window.setTimeout(() => {
+                    if (!gestureRef.current.moved && pointersRef.current.size === 1) {
+                        gestureRef.current.longPressed = true;
+                        onLongPress(slotId);
+                    }
+                }, LONG_PRESS_MS);
             }
+        } else if (ptrs.size === 2) {
+            clearTimer();
             gestureRef.current.mode = 'pinch';
         }
     };
@@ -383,17 +372,17 @@ const EditableSlot = React.memo(function EditableSlot({
             // ---- pinch: zoom + pan (no rotation, to avoid accidental skew) ----
             g.mode = 'pinch';
             g.moved = true;
+            clearTimer();
             let other: { x: number; y: number } | null = null;
             for (const [id, pos] of ptrs) { if (id !== e.pointerId) { other = pos; break; } }
-            if (other) {
+            if (other && photo) {
                 const oldDist = Math.hypot(other.x - prev.x, other.y - prev.y);
                 const newDist = Math.hypot(other.x - curr.x, other.y - curr.y);
-                if (oldDist > 1 && photo) {
+                if (oldDist > 1) {
                     const factor = newDist / oldDist;
                     const e0 = editsRef.current;
                     const newScale = Math.max(1, Math.min(3, e0.scale * factor));
                     onEditsChange(slotId, { scale: newScale });
-                    // pan toward the moving finger's midpoint contribution
                     applyPan((curr.x - prev.x) / 2, (curr.y - prev.y) / 2);
                 }
             }
@@ -402,6 +391,8 @@ const EditableSlot = React.memo(function EditableSlot({
         }
 
         // ---- single pointer ----
+        if (g.longPressed) { ptrs.set(e.pointerId, curr); return; } // armed: ignore movement
+
         const totalDx = curr.x - g.startX;
         const totalDy = curr.y - g.startY;
 
@@ -410,53 +401,44 @@ const EditableSlot = React.memo(function EditableSlot({
                 ptrs.set(e.pointerId, curr);
                 return;
             }
-            // Classify the drag: a zoomed-in photo repositions; otherwise the
-            // tile itself is dragged to another slot to swap.
             g.moved = true;
-            if (photo && editsRef.current.scale > 1.001) {
-                g.mode = 'pan';
-            } else if (photo) {
-                g.mode = 'swap';
-                onSwapDragStart(slotId, curr.x, curr.y);
-            } else {
-                g.mode = 'pan'; // empty slot, nothing happens
-            }
+            clearTimer();
+            g.mode = 'pan';
         }
 
-        if (g.mode === 'pan') {
+        if (g.mode === 'pan' && photo) {
             applyPan(curr.x - prev.x, curr.y - prev.y);
-        } else if (g.mode === 'swap') {
-            onSwapDragMove(curr.x, curr.y);
         }
         ptrs.set(e.pointerId, curr);
     };
 
     const handlePointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
         const ptrs = pointersRef.current;
-        const wasMode = gestureRef.current.mode;
+        const g = gestureRef.current;
         if (ptrs.has(e.pointerId)) ptrs.delete(e.pointerId);
 
         if (ptrs.size === 0) {
-            const moved = gestureRef.current.moved;
-            const dist = Math.abs(e.clientX - gestureRef.current.startX) + Math.abs(e.clientY - gestureRef.current.startY);
-            if (wasMode === 'swap') {
-                onSwapDragEnd(e.clientX, e.clientY);
-            } else if (!moved && dist < TAP_SLOP) {
+            clearTimer();
+            const dist = Math.abs(e.clientX - g.startX) + Math.abs(e.clientY - g.startY);
+            // A long-press already armed the swap; don't also treat the release
+            // as a tap (which would immediately cancel it).
+            if (!g.longPressed && !g.moved && dist < TAP_SLOP) {
                 onTap(slotId);
             }
             gestureRef.current.mode = null;
             gestureRef.current.moved = false;
+            gestureRef.current.longPressed = false;
         } else if (ptrs.size === 1) {
-            // Lifted one finger of a pinch; reset the remaining pointer as a fresh start
+            // One finger lifted from a pinch — treat the remaining finger as a fresh, already-moved gesture.
             const remaining = [...ptrs.entries()][0];
-            gestureRef.current = { mode: null, moved: true, startX: remaining[1].x, startY: remaining[1].y };
+            gestureRef.current = { mode: null, moved: true, longPressed: false, startX: remaining[1].x, startY: remaining[1].y, timer: null };
         }
     };
 
     return (
         <div
             data-slot-id={slot.id}
-            className={`absolute transition-all duration-150 ${isSelected ? 'z-10' : ''} ${isDragSource ? 'opacity-40' : ''}`}
+            className={`absolute transition-all duration-150 ${isSelected || isSwapSource ? 'z-10' : ''}`}
             style={{
                 left: `${slot.x}%`,
                 top: `${slot.y}%`,
@@ -476,14 +458,15 @@ const EditableSlot = React.memo(function EditableSlot({
                 onContextMenu={(ev) => ev.preventDefault()}
                 className={`relative w-full h-full overflow-hidden bg-slate-200 transition-all select-none cursor-pointer
                     ${isSelected ? 'ring-4 ring-blue-500' : ''}
-                    ${isDragTarget ? 'ring-4 ring-emerald-400 scale-[0.97]' : ''}`}
+                    ${isSwapSource ? 'ring-4 ring-amber-400' : ''}
+                    ${swapArmed ? 'ring-2 ring-amber-300/60' : ''}`}
                 style={{
                     borderRadius: cornerRadius,
                     touchAction: 'none',
                     WebkitUserSelect: 'none',
                 }}
             >
-                {photo && (
+                {photo ? (
                     <div
                         className="absolute inset-0"
                         style={{
@@ -509,6 +492,15 @@ const EditableSlot = React.memo(function EditableSlot({
                             }}
                         />
                     </div>
+                ) : null}
+
+                {/* Swap-target hint badge */}
+                {swapArmed && photo && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-amber-400/10 pointer-events-none">
+                        <span className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-400 text-slate-900 shadow-lg">
+                            <Repeat2 className="w-4 h-4" />
+                        </span>
+                    </span>
                 )}
             </div>
         </div>
@@ -579,12 +571,13 @@ function LayoutsTab({
 }
 
 function AdjustTab({
-    selectedSlot, edits, onUpdate, onReset,
+    selectedSlot, edits, onUpdate, onReset, onArmSwap,
 }: {
     selectedSlot: string | null;
     edits: PhotoEdits;
     onUpdate: (updates: Partial<PhotoEdits>) => void;
     onReset: () => void;
+    onArmSwap: () => void;
 }) {
     if (!selectedSlot) {
         return (
@@ -618,13 +611,22 @@ function AdjustTab({
             <SliderRow label="Saturation" value={edits.saturation} min={0} max={2} step={0.01} format={(v) => v.toFixed(2)} onChange={(v) => onUpdate({ saturation: v })} />
             <SliderRow label="Blur" value={edits.blur} min={0} max={6} step={0.1} unit="px" onChange={(v) => onUpdate({ blur: v })} />
 
-            <button
-                onClick={onReset}
-                className="w-full py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm font-medium flex items-center justify-center gap-2"
-            >
-                <RotateCcw className="w-4 h-4" />
-                Reset this photo
-            </button>
+            <div className="flex gap-2">
+                <button
+                    onClick={onArmSwap}
+                    className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-900 text-sm font-semibold flex items-center justify-center gap-2"
+                >
+                    <Repeat2 className="w-4 h-4" />
+                    Swap…
+                </button>
+                <button
+                    onClick={onReset}
+                    className="flex-1 py-2.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm font-medium flex items-center justify-center gap-2"
+                >
+                    <RotateCcw className="w-4 h-4" />
+                    Reset
+                </button>
+            </div>
         </div>
     );
 }
@@ -740,7 +742,6 @@ function FormatTab({
                 {ASPECT_PRESETS.map((preset) => {
                     const isSelected = (preset.ratio ?? null) === activeRatio ||
                         (preset.ratio !== null && activeRatio !== null && Math.abs(preset.ratio - activeRatio) < 0.001);
-                    // Visual chip showing the ratio shape
                     const r = preset.ratio ?? 1;
                     const boxW = r >= 1 ? 34 : 34 * r;
                     const boxH = r >= 1 ? 34 / r : 34;

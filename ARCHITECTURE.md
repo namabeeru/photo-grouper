@@ -98,13 +98,15 @@ The app operates as a **three-phase state machine**:
 - Adjustments: rotation, zoom (scale), pan (offsetX/Y), brightness, contrast,
   saturation, blur
 - **Touch gestures** (Pointer Events on each slot in `EditableSlot`):
-  - one-finger drag on a non-zoomed photo → drag-to-swap (the tile lifts and
-    follows the finger; dropping on another tile swaps them, with the target
-    highlighted). Hit-testing uses `document.elementFromPoint` + `data-slot-id`.
-  - one-finger drag on a zoomed-in photo (scale > 1) → reposition (pan)
+  - tap → select the slot
+  - one-finger drag → reposition (pan) the photo, at any zoom level
   - two-finger pinch → zoom (pan follows). Rotation is intentionally NOT part
     of the pinch, to avoid the accidental "skew" that twisting introduces;
     rotate precisely via the Adjust buttons/slider instead.
+  - long-press (~400ms, with haptic) → arm the slot for swapping; the next tap
+    on another slot swaps them. A "Swap…" button in the Adjust tab arms it too.
+    Swap is an explicit mode so it never conflicts with pan/zoom (the earlier
+    drag-to-swap broke once a photo was zoomed, since drag then meant "pan").
 - **Pan is bounded** (`maxOffsetPct` / `clampOffsets` in `utils/photoEdits.ts`):
   offsets are clamped to the image's overflow so panning never reveals empty
   space, and zooming back out re-clamps so edges that were pushed off-frame
