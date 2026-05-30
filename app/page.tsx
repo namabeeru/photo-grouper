@@ -36,6 +36,8 @@ export default function Home() {
   const [slotEdits, setSlotEdits] = useState<Map<string, PhotoEdits>>(new Map());
   // Collage-wide style
   const [collageStyle, setCollageStyle] = useState<CollageStyle>(DEFAULT_STYLE);
+  // Output aspect ratio override (null = follow the layout's own ratio)
+  const [outputAspectRatio, setOutputAspectRatio] = useState<number | null>(null);
 
   // Processing state for image compression
   const [isProcessing, setIsProcessing] = useState(false);
@@ -141,6 +143,7 @@ export default function Home() {
     setPhotoAssignments(initAssignments(template, photos.length));
     setSlotEdits(new Map());
     setCollageStyle(DEFAULT_STYLE);
+    setOutputAspectRatio(null);
     setSelectedSlot(null);
     setPhase('editor');
   }, [photos.length]);
@@ -212,6 +215,10 @@ export default function Home() {
     setCollageStyle((prev) => ({ ...prev, ...updates }));
   }, []);
 
+  const handleSetAspectRatio = useCallback((ratio: number | null) => {
+    setOutputAspectRatio(ratio);
+  }, []);
+
   const handleSave = useCallback(async () => {
     if (photos.length === 0) return;
 
@@ -224,14 +231,14 @@ export default function Home() {
         }
       });
 
-      await saveCollage(selectedTemplate, photosMap, slotEdits, collageStyle);
+      await saveCollage(selectedTemplate, photosMap, slotEdits, collageStyle, outputAspectRatio);
     } catch (error) {
       console.error('Failed to save collage:', error);
       alert('Failed to save collage. Please try again.');
     } finally {
       setIsSaving(false);
     }
-  }, [photos, photoAssignments, selectedTemplate, slotEdits, collageStyle]);
+  }, [photos, photoAssignments, selectedTemplate, slotEdits, collageStyle, outputAspectRatio]);
 
   const handleCancelEditor = useCallback(() => {
     setSelectedSlot(null);
@@ -286,6 +293,7 @@ export default function Home() {
           selectedSlot={selectedSlot}
           slotEdits={slotEdits}
           collageStyle={collageStyle}
+          outputAspectRatio={outputAspectRatio}
           isSaving={isSaving}
           onTemplateSelect={handleTemplateSelect}
           onSlotClick={handleSlotClick}
@@ -294,6 +302,7 @@ export default function Home() {
           onResetSlotEdits={handleResetSlotEdits}
           onApplyEditToAll={handleApplyEditToAll}
           onUpdateStyle={handleUpdateStyle}
+          onSetAspectRatio={handleSetAspectRatio}
           onSave={handleSave}
           onCancel={handleCancelEditor}
         />

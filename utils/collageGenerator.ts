@@ -3,7 +3,7 @@
  *
  * Applies per-slot edits (rotation/scale/offset/filter) and collage-wide
  * style (background, gap, corner radius, padding) so the exported image
- * matches the preview.
+ * matches the preview. Honors an optional output aspect-ratio override.
  */
 
 import { CollageTemplate } from './templates';
@@ -13,6 +13,7 @@ import {
   CollageStyle,
   DEFAULT_STYLE,
   editsToCssFilter,
+  clampOffsets,
 } from './photoEdits';
 
 interface PhotoData {
@@ -36,17 +37,36 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
 };
 
 /**
- * Draw a rounded-rect path on the given context.
- * Falls back gracefully when CanvasRenderingContext2D.roundRect is unavailable.
+ * Load every distinct photo URL once, in parallel. Returns a lookup the
+ * renderer can read synchronously.
  */
+async function preloadImages(urls: string[]): Promise<Map<string, HTMLImageElement>> {
+  const unique = Array.from(new Set(urls));
+  const entries = await Promise.all(
+    unique.map(async (url): Promise<[string, HTMLImageElement] | null> => {
+      try {
+        return [url, await loadImage(url)];
+      } catch (e) {
+        console.error('Failed to load image:', e);
+        return null;
+      }
+    })
+  );
+  const map = new Map<string, HTMLImageElement>();
+  for (const entry of entries) {
+    if (entry) map.set(entry[0], entry[1]);
+  }
+  return map;
+}
+
 function pathRoundedRect(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, w: number, h: number, r: number,
 ) {
   const radius = Math.max(0, Math.min(r, w / 2, h / 2));
-  if (typeof (ctx as CanvasRenderingContext2D & { roundRect?: unknown }).roundRect === 'function') {
-    (ctx as CanvasRenderingContext2D & { roundRect: (x: number, y: number, w: number, h: number, r: number) => void })
-      .roundRect(x, y, w, h, radius);
+  const c = ctx as CanvasRenderingContext2D & { roundRect?: (x: number, y: number, w: number, h: number, r: number) => void };
+  if (typeof c.roundRect === 'function') {
+    c.roundRect(x, y, w, h, radius);
     return;
   }
   ctx.moveTo(x + radius, y);
@@ -61,12 +81,9 @@ function pathRoundedRect(
 }
 
 /**
- * Draw an image into a slot, replicating the CSS pipeline used in the editor:
- *   1. cover-fit the image to slot dimensions
- *   2. translate by (offsetX%, offsetY%) of the slot box
- *   3. scale around the slot center
- *   4. rotate around the slot center
- *   5. apply the CSS filter (presets + brightness/contrast/saturate/blur)
+ * Draw an image into a slot, replicating the editor's CSS pipeline:
+ * cover-fit → translate(offset) → scale → rotate, with the offset clamped so
+ * the image always covers the slot (never reveals empty space).
  */
 function drawSlot(
   ctx: CanvasRenderingContext2D,
@@ -77,25 +94,27 @@ function drawSlot(
 ) {
   ctx.save();
 
-  // Clip to rounded slot rect.
   ctx.beginPath();
   pathRoundedRect(ctx, x, y, w, h, cornerRadius);
   ctx.clip();
 
-  // Apply CSS filter (supported in modern browsers via ctx.filter).
   const filter = editsToCssFilter(edits);
   if (filter) ctx.filter = filter;
 
-  // Cover sizing for the image at the slot rect.
   const iw = img.width;
   const ih = img.height;
+  const imgAspect = iw / ih;
+
+  // Cover sizing for the image at the slot rect.
   const scale = Math.max(w / iw, h / ih);
   const nw = iw * scale;
   const nh = ih * scale;
 
-  // Move to slot center then apply translate → scale → rotate (same order as CSS).
+  // Clamp offsets to the same bounds used in the editor.
+  const { offsetX, offsetY } = clampOffsets(edits, imgAspect, w, h);
+
   ctx.translate(x + w / 2, y + h / 2);
-  ctx.translate((edits.offsetX / 100) * w, (edits.offsetY / 100) * h);
+  ctx.translate((offsetX / 100) * w, (offsetY / 100) * h);
   ctx.scale(edits.scale, edits.scale);
   ctx.rotate((edits.rotation * Math.PI) / 180);
 
@@ -112,11 +131,12 @@ export async function generateCollage(
   photos: Map<string, PhotoData>,
   slotEdits: Map<string, PhotoEdits> = new Map(),
   collageStyle: CollageStyle = DEFAULT_STYLE,
+  outputAspectRatio: number | null = null,
 ): Promise<string> {
+  const aspect = outputAspectRatio ?? template.aspectRatio;
   const canvasWidth = EXPORT_WIDTH;
-  const canvasHeight = EXPORT_WIDTH / template.aspectRatio;
+  const canvasHeight = Math.round(EXPORT_WIDTH / aspect);
 
-  // Scale editor px values up for the export canvas.
   const pxScale = canvasWidth / REFERENCE_WIDTH;
   const gapPx = collageStyle.gap * pxScale;
   const paddingPx = collageStyle.padding * pxScale;
@@ -127,11 +147,17 @@ export async function generateCollage(
   canvas.height = canvasHeight;
   const ctx = canvas.getContext('2d')!;
 
-  // Background fill (entire canvas including padding area).
   ctx.fillStyle = collageStyle.background || '#ffffff';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  // Inner area where slots live, after outer padding.
+  // Preload all photos in parallel before drawing.
+  const urls: string[] = [];
+  for (const slot of template.slots) {
+    const photo = photos.get(slot.id);
+    if (photo) urls.push(photo.previewUrl);
+  }
+  const imageCache = await preloadImages(urls);
+
   const innerX = paddingPx;
   const innerY = paddingPx;
   const innerW = canvasWidth - paddingPx * 2;
@@ -147,14 +173,12 @@ export async function generateCollage(
     const sy = innerY + (slot.y / 100) * innerH + gapPx / 2;
     const sw = (slot.width / 100) * innerW - gapPx;
     const sh = (slot.height / 100) * innerH - gapPx;
-
     if (sw <= 0 || sh <= 0) continue;
 
-    try {
-      const img = await loadImage(photo.previewUrl);
+    const img = imageCache.get(photo.previewUrl);
+    if (img) {
       drawSlot(ctx, img, sx, sy, sw, sh, edits, cornerPx);
-    } catch (error) {
-      console.error('Failed to load image:', error);
+    } else {
       ctx.fillStyle = '#e2e8f0';
       ctx.fillRect(sx, sy, sw, sh);
     }
@@ -179,20 +203,20 @@ export async function saveCollage(
   photos: Map<string, PhotoData>,
   slotEdits: Map<string, PhotoEdits> = new Map(),
   collageStyle: CollageStyle = DEFAULT_STYLE,
+  outputAspectRatio: number | null = null,
 ): Promise<void> {
-  const url = await generateCollage(template, photos, slotEdits, collageStyle);
+  const url = await generateCollage(template, photos, slotEdits, collageStyle, outputAspectRatio);
 
-  if (navigator.share) {
+  if (navigator.share && navigator.canShare) {
     try {
       const response = await fetch(url);
       const blob = await response.blob();
       const file = new File([blob], 'photo-collage.jpg', { type: 'image/jpeg' });
-      await navigator.share({
-        files: [file],
-        title: 'Photo Collage',
-      });
-      URL.revokeObjectURL(url);
-      return;
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Photo Collage' });
+        URL.revokeObjectURL(url);
+        return;
+      }
     } catch (error) {
       console.warn('Share failed, falling back to download:', error);
     }

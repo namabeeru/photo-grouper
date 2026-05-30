@@ -80,6 +80,63 @@ export const FILTER_OPTIONS: { id: FilterId; label: string }[] = [
     { id: 'matte', label: 'Matte' },
 ];
 
+function clampNum(v: number, lo: number, hi: number): number {
+    return Math.max(lo, Math.min(hi, v));
+}
+
+/**
+ * How far (as a % of the slot's width/height) a photo can be panned before its
+ * edge would pull inside the slot and reveal empty space.
+ *
+ * The photo is rendered "cover" (fills the slot, overflowing on one axis) and
+ * then multiplied by the user `scale`. The pannable range in each axis is half
+ * the overflow. This is what keeps panning from cropping the image out of frame
+ * and what lets a zoomed-in photo recover its edges when you zoom back out.
+ */
+export function maxOffsetPct(
+    imgAspect: number,
+    slotW: number,
+    slotH: number,
+    scale: number,
+): { x: number; y: number } {
+    if (!imgAspect || !isFinite(imgAspect) || slotW <= 0 || slotH <= 0) {
+        return { x: 0, y: 0 };
+    }
+    const slotAspect = slotW / slotH;
+    let renderedW: number;
+    let renderedH: number;
+    if (imgAspect >= slotAspect) {
+        // Image is wider than the slot → height fills, width overflows.
+        renderedH = slotH;
+        renderedW = slotH * imgAspect;
+    } else {
+        renderedW = slotW;
+        renderedH = slotW / imgAspect;
+    }
+    renderedW *= scale;
+    renderedH *= scale;
+    const maxX = Math.max(0, (renderedW - slotW) / 2);
+    const maxY = Math.max(0, (renderedH - slotH) / 2);
+    return { x: (maxX / slotW) * 100, y: (maxY / slotH) * 100 };
+}
+
+/**
+ * Clamp an edit's pan offsets to the pannable range for the given image/slot.
+ * Returns the (possibly) adjusted offsets.
+ */
+export function clampOffsets(
+    edits: PhotoEdits,
+    imgAspect: number,
+    slotW: number,
+    slotH: number,
+): { offsetX: number; offsetY: number } {
+    const m = maxOffsetPct(imgAspect, slotW, slotH, edits.scale);
+    return {
+        offsetX: clampNum(edits.offsetX, -m.x, m.x),
+        offsetY: clampNum(edits.offsetY, -m.y, m.y),
+    };
+}
+
 export function editsToCssFilter(edits: PhotoEdits): string {
     const parts: string[] = [];
     const preset = FILTER_PRESETS[edits.filter];
@@ -128,4 +185,29 @@ export const BACKGROUND_PRESETS: { name: string; value: string }[] = [
     { name: 'Charcoal', value: '#2b2b2e' },
     { name: 'Sunset', value: '#ffb088' },
     { name: 'Forest', value: '#2f4a3a' },
+];
+
+// ===== Output aspect ratios =====
+
+export interface AspectPreset {
+    id: string;
+    label: string;     // short name shown on the chip
+    platform: string;  // where it's used
+    ratio: number | null; // width / height; null = follow the layout's own ratio
+}
+
+/**
+ * Final-image aspect ratios. The layout's slots are percentage-based, so they
+ * reflow to whatever output ratio is chosen — letting one collage be exported
+ * for several platforms.
+ */
+export const ASPECT_PRESETS: AspectPreset[] = [
+    { id: 'auto', label: 'Layout', platform: 'Original', ratio: null },
+    { id: 'square', label: '1:1', platform: 'Instagram Post', ratio: 1 },
+    { id: 'portrait45', label: '4:5', platform: 'Instagram Portrait', ratio: 4 / 5 },
+    { id: 'story', label: '9:16', platform: 'Story / Reel / TikTok', ratio: 9 / 16 },
+    { id: 'landscape169', label: '16:9', platform: 'YouTube / X', ratio: 16 / 9 },
+    { id: 'pin23', label: '2:3', platform: 'Pinterest', ratio: 2 / 3 },
+    { id: 'fb', label: '1.91:1', platform: 'Facebook Link', ratio: 1.91 },
+    { id: 'landscape43', label: '4:3', platform: 'Classic Photo', ratio: 4 / 3 },
 ];

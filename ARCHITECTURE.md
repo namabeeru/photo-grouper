@@ -93,10 +93,22 @@ The app operates as a **three-phase state machine**:
 - Each template has: `id`, `name`, `slots`, `aspectRatio`, `style`
 - Styles: `clean`, `polaroid`, `rounded`, `artistic`
 
-### 3. Per-Photo Editing (Adjust tab)
+### 3. Per-Photo Editing (Adjust tab + touch gestures)
 - Each slot can be tapped to open inline edit controls
 - Adjustments: rotation, zoom (scale), pan (offsetX/Y), brightness, contrast,
-  saturation, blur, and a `Swap photo` action
+  saturation, blur
+- **Touch gestures** (Pointer Events on each slot in `EditableSlot`):
+  - one-finger drag on a non-zoomed photo → drag-to-swap (the tile lifts and
+    follows the finger; dropping on another tile swaps them, with the target
+    highlighted). Hit-testing uses `document.elementFromPoint` + `data-slot-id`.
+  - one-finger drag on a zoomed-in photo (scale > 1) → reposition (pan)
+  - two-finger pinch → zoom (pan follows). Rotation is intentionally NOT part
+    of the pinch, to avoid the accidental "skew" that twisting introduces;
+    rotate precisely via the Adjust buttons/slider instead.
+- **Pan is bounded** (`maxOffsetPct` / `clampOffsets` in `utils/photoEdits.ts`):
+  offsets are clamped to the image's overflow so panning never reveals empty
+  space, and zooming back out re-clamps so edges that were pushed off-frame
+  return into view. A `ResizeObserver` re-clamps on layout/aspect changes.
 - Edits are stored as a `Map<slotId, PhotoEdits>` in page-level state
 - Reset clears the slot back to defaults
 - Reassigning a layout resets all edits (slot IDs may not map cleanly)
@@ -110,16 +122,26 @@ The app operates as a **three-phase state machine**:
 - `Apply to all` propagates the active filter to every slot
 - Canvas export uses `ctx.filter` so JPEG output matches preview
 
-### 5. Collage Style (Style tab)
+### 5. Output Aspect Ratio (Format tab)
+- `ASPECT_PRESETS` in `utils/photoEdits.ts` — platform-targeted ratios
+  (Instagram 1:1 / 4:5, Story 9:16, YouTube/X 16:9, Pinterest 2:3,
+  Facebook 1.91:1, 4:3, plus "Layout" = the template's own ratio)
+- Stored as `outputAspectRatio: number | null` in page state; because slots
+  are percentage-based they reflow to whatever ratio is chosen
+- Applied to both the editor preview and the export canvas
+
+### 6. Collage Style (Style tab)
 - Background colour swatches + free colour picker
 - Sliders for photo gap, corner radius, outer padding
 - Stored as `CollageStyle` in page-level state, applied both in editor and
   during export
 
-### 6. Canvas-Based Export
+### 7. Canvas-Based Export
 - `utils/collageGenerator.ts` renders collages using HTML Canvas API
-- Replicates the CSS pipeline: cover-fit → translate → scale → rotate, then
-  applies `ctx.filter` and clips with rounded rects
+- Preloads all photos in parallel (`preloadImages`) before drawing
+- Replicates the CSS pipeline: cover-fit → clamped translate → scale → rotate,
+  then applies `ctx.filter` and clips with rounded rects
+- Honors the output aspect-ratio override
 - Editor px values (gap/padding/radius) scale via
   `EXPORT_WIDTH / REFERENCE_WIDTH (448)` so output matches preview
 

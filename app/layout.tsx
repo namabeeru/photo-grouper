@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
@@ -13,11 +13,18 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#1E1B4B",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata: Metadata = {
   title: "Photo Grouper",
   description: "Create beautiful photo collages with privacy-first design. Your photos stay on your device - zero cloud uploads, ever.",
   manifest: "/site.webmanifest",
-  themeColor: "#1E1B4B",
   keywords: ["photo collage", "photo grouper", "collage maker", "privacy", "offline", "photo editor"],
   authors: [{ name: "Photo Grouper" }],
   creator: "Photo Grouper",
