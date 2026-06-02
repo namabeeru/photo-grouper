@@ -145,7 +145,10 @@ export async function generateCollage(
   const canvas = document.createElement('canvas');
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
-  const ctx = canvas.getContext('2d')!;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Canvas rendering context unavailable');
+  }
 
   ctx.fillStyle = collageStyle.background || '#ffffff';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -228,5 +231,5 @@ export async function saveCollage(
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }

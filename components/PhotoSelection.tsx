@@ -83,6 +83,7 @@ export default function PhotoSelection({
                             {/* Remove button */}
                             <button
                                 onClick={() => onRemovePhoto(index)}
+                                aria-label={`Remove photo ${index + 1}`}
                                 className="absolute top-1.5 right-1.5 p-1.5 bg-black/50 hover:bg-red-500 text-white rounded-full transition-colors backdrop-blur-sm"
                             >
                                 <X className="w-4 h-4" />
@@ -98,6 +99,7 @@ export default function PhotoSelection({
                     {canAddMore && (
                         <button
                             onClick={onAddPhotos}
+                            aria-label="Add photos"
                             className="aspect-square rounded-xl border-2 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 flex flex-col items-center justify-center gap-2 transition-all"
                         >
                             <Plus className="w-8 h-8 text-slate-400" />

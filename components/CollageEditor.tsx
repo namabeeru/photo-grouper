@@ -173,7 +173,7 @@ export default function CollageEditor({
                     }}
                 >
                     <div className="relative w-full h-full">
-                        {selectedTemplate.slots.map((slot) => {
+                        {selectedTemplate.slots.map((slot, slotIndex) => {
                             const photoIndex = photoAssignments.get(slot.id);
                             const photo = photoIndex !== undefined ? photos[photoIndex] : null;
                             const isSelected = selectedSlot === slot.id && !swapSource;
@@ -183,6 +183,7 @@ export default function CollageEditor({
                                 <EditableSlot
                                     key={slot.id}
                                     slot={slot}
+                                    slotNumber={slotIndex + 1}
                                     photo={photo}
                                     edits={edits}
                                     isSelected={isSelected}
@@ -263,6 +264,7 @@ const LONG_PRESS_MS = 400;   // hold time to arm a swap
 
 interface EditableSlotProps {
     slot: SlotPosition;
+    slotNumber: number;
     photo: PhotoData | null;
     edits: PhotoEdits;
     isSelected: boolean;
@@ -276,7 +278,7 @@ interface EditableSlotProps {
 }
 
 const EditableSlot = React.memo(function EditableSlot({
-    slot, photo, edits, isSelected, isSwapSource, swapArmed,
+    slot, slotNumber, photo, edits, isSelected, isSwapSource, swapArmed,
     cornerRadius, halfGap,
     onTap, onLongPress, onEditsChange,
 }: EditableSlotProps) {
@@ -305,6 +307,21 @@ const EditableSlot = React.memo(function EditableSlot({
         }
     }, []);
 
+    const commitEditsChange = useCallback((updates: Partial<PhotoEdits>) => {
+        editsRef.current = { ...editsRef.current, ...updates };
+        onEditsChange(slotId, updates);
+    }, [slotId, onEditsChange]);
+
+    const getPannedOffsets = useCallback((e: PhotoEdits, dxPx: number, dyPx: number, scale = e.scale) => {
+        const rect = innerRef.current?.getBoundingClientRect();
+        if (!rect || rect.width === 0 || rect.height === 0) return null;
+        const m = maxOffsetPct(imgAspectRef.current, rect.width, rect.height, scale);
+        return {
+            offsetX: Math.max(-m.x, Math.min(m.x, e.offsetX + (dxPx / rect.width) * 100)),
+            offsetY: Math.max(-m.y, Math.min(m.y, e.offsetY + (dyPx / rect.height) * 100)),
+        };
+    }, []);
+
     // Re-clamp stored offsets when overflow could change (zoom / image load /
     // slot resize) so panning never reveals empty space and zooming out brings
     // pushed-off edges back into view.
@@ -314,9 +331,9 @@ const EditableSlot = React.memo(function EditableSlot({
         const e = editsRef.current;
         const clamped = clampOffsets(e, imgAspectRef.current, rect.width, rect.height);
         if (Math.abs(clamped.offsetX - e.offsetX) > 0.05 || Math.abs(clamped.offsetY - e.offsetY) > 0.05) {
-            onEditsChange(slotId, clamped);
+            commitEditsChange(clamped);
         }
-    }, [slotId, onEditsChange]);
+    }, [commitEditsChange]);
 
     useEffect(() => { reclamp(); }, [edits.scale, reclamp]);
 
@@ -331,13 +348,9 @@ const EditableSlot = React.memo(function EditableSlot({
     useEffect(() => () => clearTimer(), [clearTimer]);
 
     const applyPan = (dxPx: number, dyPx: number) => {
-        const rect = innerRef.current?.getBoundingClientRect();
-        if (!rect || rect.width === 0 || rect.height === 0) return;
         const e = editsRef.current;
-        const m = maxOffsetPct(imgAspectRef.current, rect.width, rect.height, e.scale);
-        const offsetX = Math.max(-m.x, Math.min(m.x, e.offsetX + (dxPx / rect.width) * 100));
-        const offsetY = Math.max(-m.y, Math.min(m.y, e.offsetY + (dyPx / rect.height) * 100));
-        onEditsChange(slotId, { offsetX, offsetY });
+        const offsets = getPannedOffsets(e, dxPx, dyPx);
+        if (offsets) commitEditsChange(offsets);
     };
 
     const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -382,8 +395,8 @@ const EditableSlot = React.memo(function EditableSlot({
                     const factor = newDist / oldDist;
                     const e0 = editsRef.current;
                     const newScale = Math.max(1, Math.min(3, e0.scale * factor));
-                    onEditsChange(slotId, { scale: newScale });
-                    applyPan((curr.x - prev.x) / 2, (curr.y - prev.y) / 2);
+                    const offsets = getPannedOffsets(e0, (curr.x - prev.x) / 2, (curr.y - prev.y) / 2, newScale);
+                    commitEditsChange(offsets ? { scale: newScale, ...offsets } : { scale: newScale });
                 }
             }
             ptrs.set(e.pointerId, curr);
@@ -435,6 +448,12 @@ const EditableSlot = React.memo(function EditableSlot({
         }
     };
 
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        onTap(slotId);
+    };
+
     return (
         <div
             data-slot-id={slot.id}
@@ -451,10 +470,12 @@ const EditableSlot = React.memo(function EditableSlot({
                 ref={innerRef}
                 role="button"
                 tabIndex={0}
+                aria-label={photo ? `Select photo slot ${slotNumber}` : `Empty photo slot ${slotNumber}`}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerEnd}
                 onPointerCancel={handlePointerEnd}
+                onKeyDown={handleKeyDown}
                 onContextMenu={(ev) => ev.preventDefault()}
                 className={`relative w-full h-full overflow-hidden bg-slate-200 transition-all select-none cursor-pointer
                     ${isSelected ? 'ring-4 ring-blue-500' : ''}

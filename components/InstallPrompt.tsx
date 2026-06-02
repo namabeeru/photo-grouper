@@ -8,47 +8,60 @@ interface BeforeInstallPromptEvent extends Event {
     userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+function getIsStandalone(): boolean {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(display-mode: standalone)').matches
+        || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
+
+function getIsIOS(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    const nav = navigator as Navigator & { maxTouchPoints?: number };
+    return /iPad|iPhone|iPod/.test(nav.userAgent)
+        || (nav.platform === 'MacIntel' && (nav.maxTouchPoints ?? 0) > 1);
+}
+
 export default function InstallPrompt() {
     const [showPrompt, setShowPrompt] = useState(false);
     const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-    const [isIOS, setIsIOS] = useState(false);
-    const [isStandalone, setIsStandalone] = useState(false);
+    const [isIOS] = useState(getIsIOS);
+    const [isStandalone] = useState(getIsStandalone);
 
     useEffect(() => {
-        // Check if already installed
-        const isInStandaloneMode = window.matchMedia('(display-mode: standalone)').matches
-            || (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-        setIsStandalone(isInStandaloneMode);
-
-        if (isInStandaloneMode) return;
+        if (isStandalone) return;
 
         // Check if dismissed before
         const dismissed = localStorage.getItem('pwa-prompt-dismissed');
         if (dismissed) return;
 
-        // Check if iOS
-        const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        setIsIOS(isIOSDevice);
+        let promptTimer: number | null = null;
+        const schedulePrompt = () => {
+            if (promptTimer !== null) window.clearTimeout(promptTimer);
+            promptTimer = window.setTimeout(() => setShowPrompt(true), 2000);
+        };
 
-        if (isIOSDevice) {
+        if (isIOS) {
             // Show iOS instructions after a delay
-            setTimeout(() => setShowPrompt(true), 2000);
-            return;
+            schedulePrompt();
+            return () => {
+                if (promptTimer !== null) window.clearTimeout(promptTimer);
+            };
         }
 
         // Listen for install prompt (Chrome/Android)
         const handleBeforeInstallPrompt = (e: Event) => {
             e.preventDefault();
             setDeferredPrompt(e as BeforeInstallPromptEvent);
-            setTimeout(() => setShowPrompt(true), 2000);
+            schedulePrompt();
         };
 
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
         return () => {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+            if (promptTimer !== null) window.clearTimeout(promptTimer);
         };
-    }, []);
+    }, [isIOS, isStandalone]);
 
     const handleInstall = async () => {
         if (!deferredPrompt) return;

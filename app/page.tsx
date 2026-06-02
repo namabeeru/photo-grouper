@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import imageCompression from 'browser-image-compression';
 import HomePage from '@/components/HomePage';
 import PhotoSelection from '@/components/PhotoSelection';
@@ -18,6 +18,16 @@ interface PhotoData {
 type AppPhase = 'home' | 'selection' | 'editor';
 
 const MAX_PHOTOS = 9;
+
+const initAssignments = (template: CollageTemplate, photoCount: number) => {
+  const assignments = new Map<string, number>();
+  template.slots.forEach((slot, index) => {
+    if (index < photoCount) {
+      assignments.set(slot.id, index);
+    }
+  });
+  return assignments;
+};
 
 export default function Home() {
   // Phase state
@@ -44,13 +54,23 @@ export default function Home() {
   const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0 });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photosRef = useRef<PhotoData[]>([]);
+
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
 
   // Cleanup URLs on unmount
   useEffect(() => {
     return () => {
-      photos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+      photosRef.current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
     };
   }, []);
+
+  const editorTemplates = useMemo(
+    () => getTemplatesForPhotoCount(photos.length),
+    [photos.length]
+  );
 
   // ===== PHOTO SELECTION HANDLERS =====
 
@@ -65,14 +85,14 @@ export default function Home() {
       .filter((file) => file.type.startsWith('image/'))
       .slice(0, MAX_PHOTOS - photos.length);
 
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
     if (files.length === 0) return;
 
     if (phase === 'home') {
       setPhase('selection');
-    }
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
     }
 
     setIsProcessing(true);
@@ -84,33 +104,35 @@ export default function Home() {
       useWebWorker: true,
     };
 
-    const newPhotos: PhotoData[] = [];
+    try {
+      const newPhotos: PhotoData[] = [];
 
-    for (let i = 0; i < files.length; i++) {
-      setProcessingProgress({ current: i + 1, total: files.length });
+      for (let i = 0; i < files.length; i++) {
+        setProcessingProgress({ current: i + 1, total: files.length });
 
-      try {
-        const compressedFile = await imageCompression(files[i], compressionOptions);
-        newPhotos.push({
-          file: compressedFile,
-          previewUrl: URL.createObjectURL(compressedFile),
-        });
-      } catch (error) {
-        console.error('Failed to compress image:', error);
-        newPhotos.push({
-          file: files[i],
-          previewUrl: URL.createObjectURL(files[i]),
-        });
+        try {
+          const compressedFile = await imageCompression(files[i], compressionOptions);
+          newPhotos.push({
+            file: compressedFile,
+            previewUrl: URL.createObjectURL(compressedFile),
+          });
+        } catch (error) {
+          console.error('Failed to compress image:', error);
+          newPhotos.push({
+            file: files[i],
+            previewUrl: URL.createObjectURL(files[i]),
+          });
+        }
       }
+
+      setPhotos((prev) => {
+        const combined = [...prev, ...newPhotos].slice(0, MAX_PHOTOS);
+        return combined;
+      });
+    } finally {
+      setIsProcessing(false);
+      setProcessingProgress({ current: 0, total: 0 });
     }
-
-    setPhotos((prev) => {
-      const combined = [...prev, ...newPhotos].slice(0, MAX_PHOTOS);
-      return combined;
-    });
-
-    setIsProcessing(false);
-    setProcessingProgress({ current: 0, total: 0 });
   }, [phase, photos.length]);
 
   const handleRemovePhoto = useCallback((index: number) => {
@@ -124,16 +146,6 @@ export default function Home() {
   }, []);
 
   // ===== COLLAGE PHASE HANDLERS =====
-
-  const initAssignments = (template: CollageTemplate, photoCount: number) => {
-    const assignments = new Map<string, number>();
-    template.slots.forEach((slot, index) => {
-      if (index < photoCount) {
-        assignments.set(slot.id, index);
-      }
-    });
-    return assignments;
-  };
 
   const handleGroupIt = useCallback(() => {
     if (photos.length < 2) return;
@@ -247,6 +259,7 @@ export default function Home() {
 
   const handleBackToHome = useCallback(() => {
     photos.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    photosRef.current = [];
     setPhotos([]);
     setPhotoAssignments(new Map());
     setSlotEdits(new Map());
@@ -287,7 +300,7 @@ export default function Home() {
       {phase === 'editor' && (
         <CollageEditor
           photos={photos}
-          templates={getTemplatesForPhotoCount(photos.length)}
+          templates={editorTemplates}
           selectedTemplate={selectedTemplate}
           photoAssignments={photoAssignments}
           selectedSlot={selectedSlot}
