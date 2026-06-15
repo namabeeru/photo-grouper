@@ -16,6 +16,11 @@ const geistMono = Geist_Mono({
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
   ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
+// Analytics is opt-in: off by default so self-hosted and forked deployments
+// don't emit analytics. The official deployment sets
+// NEXT_PUBLIC_ENABLE_ANALYTICS=true.
+const analyticsEnabled = process.env.NEXT_PUBLIC_ENABLE_ANALYTICS === "true";
+
 export const viewport: Viewport = {
   themeColor: "#1E1B4B",
   width: "device-width",
@@ -78,7 +83,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
-        <Analytics />
+        {analyticsEnabled && <Analytics />}
       </body>
     </html>
   );
