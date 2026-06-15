@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Photo Grouper
+
+> A privacy-first, offline-capable photo collage maker. Your photos never leave your device.
+
+![Photo Grouper](public/og-image.png)
+
+Photo Grouper is a [Next.js](https://nextjs.org) PWA for turning 2–9 photos into a clean, shareable collage — entirely in your browser. There is no account, no upload, and no server-side processing. Every pixel is loaded, edited, and exported locally.
+
+<!-- Add your deployment URL below once it's live. -->
+**🔗 Live demo:** _add your deployment URL here_
+
+## Why Photo Grouper?
+
+- **🔒 Privacy-first** — photos are read and processed in-browser and never uploaded anywhere.
+- **📴 Offline-capable** — installable PWA with a service worker; works without a connection.
+- **⚡ No account, no friction** — open it and start; nothing to sign up for.
+- **🪶 Lightweight** — no image backend, no storage, no AI inference. Just a static client-side app.
+
+## Features
+
+- **Layouts** — many templates for 2 through 9 photos, in `clean`, `polaroid`, `rounded`, and `artistic` styles.
+- **Per-photo editing** — pan, zoom, and rotate each slot; adjust brightness, contrast, saturation, and blur.
+- **Touch gestures** — drag to pan, pinch to zoom, long-press to arm a photo swap.
+- **Instagram-style filters** — Mono, Noir, Sepia, Vintage, Fade, Warm, Cool, Vivid, and more, with live previews and "apply to all".
+- **Output aspect ratios** — export for Instagram (1:1, 4:5), Stories/Reels (9:16), YouTube/X (16:9), Pinterest (2:3), and more.
+- **Style controls** — background color, photo gap, corner radius, and outer padding.
+- **Canvas export** — high-resolution JPEG output that matches the editor preview, via the native share sheet or download.
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 16 (App Router) |
+| UI | React 19 |
+| Language | TypeScript |
+| Styling | Tailwind CSS v4 |
+| Icons | Lucide React |
+| Image compression | browser-image-compression |
+| PWA | next-pwa |
 
 ## Getting Started
 
-First, run the development server:
+Requires **Node.js 20+**.
 
 ```bash
+# Clone
+git clone https://github.com/namabeeru/photo-grouper.git
+cd photo-grouper
+
+# Install dependencies
+npm install
+
+# Start the dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Other commands
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build   # Production build
+npm run start   # Serve the production build
+npm run lint    # Run ESLint
+```
 
-## Learn More
+## How It Works
 
-To learn more about Next.js, take a look at the following resources:
+Photo Grouper is a three-phase client-side state machine — **Home → Selection → Editor** — with all state held in React (`app/page.tsx`). Selected images are compressed with `browser-image-compression`, arranged into a chosen template, edited per slot, and finally rendered to a `<canvas>` for export. Nothing is ever sent to a server.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+For a deeper dive into the architecture, components, and rendering pipeline, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deployment
 
-## Deploy on Vercel
+This is a standard Next.js app and deploys cleanly to any platform that supports Next.js (Vercel, Netlify, Cloudflare, a Node host, etc.). Because all processing is client-side, no environment variables or backend services are required to run it.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Contributing
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Contributions are welcome! New collage templates, filters, bug fixes, and accessibility improvements are all great places to start. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines.
+
+## License
+
+[MIT](LICENSE) © namabeeru
