@@ -191,6 +191,7 @@ npm run lint    # Run ESLint
 
 - Designed for static/edge deployment
 - Recommended platform: **Vercel**
+- Live instance: **[photogrouper.com](https://photogrouper.com)**
 - No server-side data storage or API routes
 
 ---

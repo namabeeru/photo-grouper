@@ -6,12 +6,16 @@
 
 Photo Grouper is a [Next.js](https://nextjs.org) PWA for turning 2–9 photos into a clean, shareable collage — entirely in your browser. There is no account, no upload, and no server-side processing. Every pixel is loaded, edited, and exported locally.
 
-<!-- Add your deployment URL below once it's live. -->
-**🔗 Live demo:** _add your deployment URL here_
+## ▶️ Try it free
+
+**[photogrouper.com](https://photogrouper.com)** runs this exact app right in your browser — free, no account, no install, nothing to download.
+
+> **Verifiable privacy:** everything runs client-side, so your photos never leave your device *even on the hosted site*. You don't have to take our word for it — this repository **is** the code that runs there, and you can read every line.
 
 ## Why Photo Grouper?
 
 - **🔒 Privacy-first** — photos are read and processed in-browser and never uploaded anywhere.
+- **🔍 Open & auditable** — MIT-licensed and fully open source, so the privacy claim above is verifiable, not just marketing copy.
 - **📴 Offline-capable** — installable PWA with a service worker; works without a connection.
 - **⚡ No account, no friction** — open it and start; nothing to sign up for.
 - **🪶 Lightweight** — no image backend, no storage, no AI inference. Just a static client-side app.
@@ -38,7 +42,9 @@ Photo Grouper is a [Next.js](https://nextjs.org) PWA for turning 2–9 photos in
 | Image compression | browser-image-compression |
 | PWA | next-pwa |
 
-## Getting Started
+## Getting Started (self-hosting & development)
+
+> Just want to make a collage? Use the free hosted app at **[photogrouper.com](https://photogrouper.com)** — no setup required. The steps below are only for running or modifying the project yourself.
 
 Requires **Node.js 20+**.
 
@@ -72,7 +78,9 @@ For a deeper dive into the architecture, components, and rendering pipeline, see
 
 ## Deployment
 
-This is a standard Next.js app and deploys cleanly to any platform that supports Next.js (Vercel, Netlify, Cloudflare, a Node host, etc.). Because all processing is client-side, no environment variables or backend services are required to run it.
+The official hosted instance is **[photogrouper.com](https://photogrouper.com)**.
+
+This is a standard Next.js app and also deploys cleanly to any platform that supports Next.js (Vercel, Netlify, Cloudflare, a Node host, etc.). Because all processing is client-side, no environment variables or backend services are required to run it.
 
 ## Contributing
 
