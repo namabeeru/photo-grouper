@@ -95,10 +95,6 @@ This is a standard Next.js app and also deploys cleanly to any platform that sup
 
 Contributions are welcome! New collage templates, filters, bug fixes, and accessibility improvements are all great places to start. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and guidelines.
 
-## Support
-
-Photo Grouper is free and open source. If you find it useful and want to support ongoing development, use the **Sponsor** button at the top of this repository. Thank you! ❤️
-
 ## Trademark & Brand
 
 The source code is MIT-licensed, but the **Photo Grouper name and logo are not** — please rebrand your forks. See [TRADEMARK.md](TRADEMARK.md) for details.
