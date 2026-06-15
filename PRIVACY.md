@@ -1,10 +1,3 @@
-<!--
-  DRAFT — review before publishing:
-    - Fill in a contact method ([your-contact-email] below) if you want one beyond GitHub issues.
-    - Confirm the wording fits your obligations in your jurisdiction (e.g. GDPR, CCPA).
-  This document is a good-faith description of how the app works; it is not legal advice.
--->
-
 # Privacy Policy
 
 **Effective date:** June 15, 2026
@@ -63,4 +56,4 @@ If this policy changes, the updated version will be posted here with a revised e
 
 ## Contact
 
-Questions about privacy? Open an issue on [GitHub](https://github.com/namabeeru/photo-grouper/issues)<!-- or email [your-contact-email] -->.
+Questions about privacy? Open an issue on [GitHub](https://github.com/namabeeru/photo-grouper/issues).

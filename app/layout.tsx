@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { SITE_URL } from "@/utils/site";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,9 +13,6 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
-
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL
-  ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
 // Analytics is opt-in: off by default so self-hosted and forked deployments
 // don't emit analytics. The official deployment sets
@@ -30,19 +28,39 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
-  title: "Photo Grouper",
-  description: "Create beautiful photo collages with privacy-first design. Your photos stay on your device - zero cloud uploads, ever.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "Photo Grouper — Free Private Photo Collage Maker (No Upload)",
+    template: "%s — Photo Grouper",
+  },
+  description:
+    "Create beautiful photo collages with privacy-first design. Your photos stay on your device — zero cloud uploads, ever. Free, no account, works offline.",
+  applicationName: "Photo Grouper",
   manifest: "/site.webmanifest",
-  keywords: ["photo collage", "photo grouper", "collage maker", "privacy", "offline", "photo editor"],
+  keywords: [
+    "photo collage",
+    "collage maker",
+    "free collage maker",
+    "private collage maker",
+    "no upload collage maker",
+    "offline collage maker",
+    "photo grouper",
+    "privacy",
+    "photo editor",
+  ],
   authors: [{ name: "Photo Grouper" }],
   creator: "Photo Grouper",
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
+    url: SITE_URL,
     siteName: "Photo Grouper",
-    title: "Photo Grouper - Create Beautiful Photo Collages",
-    description: "Create stunning photo collages with complete privacy. Your photos never leave your device.",
+    title: "Photo Grouper — Create Beautiful Photo Collages, Privately",
+    description:
+      "Create stunning photo collages with complete privacy. Your photos never leave your device. Free, no account, works offline.",
     images: [
       {
         url: "/og-image.png",
@@ -54,8 +72,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Photo Grouper - Create Beautiful Photo Collages",
-    description: "Create stunning photo collages with complete privacy. Your photos never leave your device.",
+    title: "Photo Grouper — Create Beautiful Photo Collages, Privately",
+    description:
+      "Create stunning photo collages with complete privacy. Your photos never leave your device.",
     images: ["/og-image.png"],
   },
   appleWebApp: {
@@ -72,6 +91,23 @@ export const metadata: Metadata = {
   },
 };
 
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: "Photo Grouper",
+  url: SITE_URL,
+  applicationCategory: "MultimediaApplication",
+  operatingSystem: "Any (web browser)",
+  description:
+    "A privacy-first, offline-capable photo collage maker. All photos are processed in your browser and never uploaded.",
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+  isAccessibleForFree: true,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -84,6 +120,10 @@ export default function RootLayout({
       >
         {children}
         {analyticsEnabled && <Analytics />}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
       </body>
     </html>
   );
