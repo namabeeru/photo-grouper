@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Private, machine-local agent / operator context (Mission Control convention) — never commit
+*.local.md
