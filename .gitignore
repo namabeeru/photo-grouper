@@ -22,23 +22,41 @@
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
+*.key
+*.cert
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
-# env files (can opt-in for committing if needed)
+# env files (never commit real secrets; templates are allowed)
 .env*
+!.env.example
+!.env*.example
 
 # vercel
-.vercel
+.vercel/
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
-# Private, machine-local agent / operator context (Mission Control convention) — never commit
+# Private, machine-local agent / operator context
 *.local.md
+
+# Local tooling / editor config
+.claude/
+.codex/
+.idea/
+
+# Caches / test artifacts
+.cache/
+.turbo/
+.parcel-cache/
+playwright-report/
+test-results/

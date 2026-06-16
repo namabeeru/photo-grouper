@@ -17,7 +17,8 @@ references, personal workflow details, or unpublished product plans to committed
 ## Working rules
 
 - Keep changes small and scoped to the requested task.
-- Use a branch or PR-ready summary for meaningful work. Do not push directly to `main`.
+- Use a branch or PR-ready summary for meaningful work. Do not push directly to `main` unless the
+  maintainer explicitly authorizes that exact action for the current task.
 - Do not deploy, submit to app stores, change production settings, change DNS, publish releases, or
   modify public privacy claims without maintainer review.
 - Do not read, print, copy, or commit secret values from `.env`, local config, device state, photo
@@ -33,4 +34,3 @@ references, personal workflow details, or unpublished product plans to committed
   privacy/security constraints, and meaningful user preferences.
 - If `AGENTS.local.md` points to a private operator workspace, follow that file for local
   memory updates. Otherwise, do not create extra memory files in this repo.
-
