@@ -17,14 +17,20 @@ references, personal workflow details, or unpublished product plans to committed
 ## Working rules
 
 - Keep changes small and scoped to the requested task.
+- Carry approved tasks end to end using available resources: the repo, CLI tools, APIs,
+  browser/computer-use automation, and approved secret workflows. Do not hand operational steps back
+  to the maintainer just because they require an external dashboard or API.
 - After each coding session, commit finished changes and push to `main` unless the maintainer
   explicitly asks for a branch/PR or the repo is already on an active review branch.
 - Do not deploy, submit to app stores, change production settings, change DNS, publish releases, or
-  modify public privacy claims without maintainer review.
+  modify public privacy claims unless the maintainer explicitly authorizes that exact action for the
+  current task.
 - Do not read, print, copy, or commit secret values from `.env`, local config, device state, photo
   libraries, or private notes.
 - Treat privacy, analytics, app-store metadata, and photo-processing behavior as maintainer-gated.
-- If work depends on private operator context, stop and ask for that context rather than guessing.
+  If authorization is exact, execute within that scope; if it is missing or ambiguous, stop and ask.
+- Stop rather than guess when work depends on unavailable private operator context, would expose
+  secrets, or raises a concrete safety/security/legal/privacy concern.
 
 ## Memory and handoff
 
