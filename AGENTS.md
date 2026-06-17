@@ -17,8 +17,8 @@ references, personal workflow details, or unpublished product plans to committed
 ## Working rules
 
 - Keep changes small and scoped to the requested task.
-- Use a branch or PR-ready summary for meaningful work. Do not push directly to `main` unless the
-  maintainer explicitly authorizes that exact action for the current task.
+- After each coding session, commit finished changes and push to `main` unless the maintainer
+  explicitly asks for a branch/PR or the repo is already on an active review branch.
 - Do not deploy, submit to app stores, change production settings, change DNS, publish releases, or
   modify public privacy claims without maintainer review.
 - Do not read, print, copy, or commit secret values from `.env`, local config, device state, photo
