@@ -20,8 +20,11 @@ references, personal workflow details, or unpublished product plans to committed
 - Carry approved tasks end to end using available resources: the repo, CLI tools, APIs,
   browser/computer-use automation, and approved secret workflows. Do not hand operational steps back
   to the maintainer just because they require an external dashboard or API.
-- After each coding session, commit finished changes and push to `main` unless the maintainer
-  explicitly asks for a branch/PR or the repo is already on an active review branch.
+- Standing Git authorization: after relevant checks pass, commit completed task changes and push the
+  current branch to the existing configured remote before reporting completion. Use `main` unless
+  the maintainer requests a branch/PR, the repo requires one, or work is already on a review branch.
+  Do not ask for separate commit/push permission. Push synchronizes work; it does not authorize
+  deployment, publishing, force-pushes, or other gated actions.
 - Do not deploy, submit to app stores, change production settings, change DNS, publish releases, or
   modify public privacy claims unless the maintainer explicitly authorizes that exact action for the
   current task.
