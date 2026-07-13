@@ -15,7 +15,8 @@ import {
     FILTER_OPTIONS,
     FilterId,
     editsToCssFilter,
-    editsToTransform,
+    effectivePhotoScale,
+    normalizeRotation,
     clampOffsets,
     maxOffsetPct,
     CollageStyle,
@@ -48,6 +49,8 @@ interface CollageEditorProps {
 }
 
 type Tab = 'layouts' | 'adjust' | 'filters' | 'format' | 'style';
+const TAB_ORDER: Tab[] = ['layouts', 'adjust', 'filters', 'format', 'style'];
+const PREVIEW_REFERENCE_WIDTH = 448;
 
 export default function CollageEditor({
     photos,
@@ -73,6 +76,8 @@ export default function CollageEditor({
     const [tab, setTab] = useState<Tab>('layouts');
     // Slot currently "armed" to be swapped. Tapping another slot swaps them.
     const [swapSource, setSwapSource] = useState<string | null>(null);
+    const previewRef = useRef<HTMLDivElement>(null);
+    const [previewWidth, setPreviewWidth] = useState(PREVIEW_REFERENCE_WIDTH);
 
     const availableTemplates = useMemo(
         () => templates.filter((t) => t.slots.length === photos.length),
@@ -80,6 +85,7 @@ export default function CollageEditor({
     );
 
     const aspectRatio = outputAspectRatio ?? selectedTemplate.aspectRatio;
+    const styleScale = previewWidth / PREVIEW_REFERENCE_WIDTH;
 
     const activeEdits: PhotoEdits = selectedSlot
         ? (slotEdits.get(selectedSlot) ?? DEFAULT_EDITS)
@@ -120,6 +126,31 @@ export default function CollageEditor({
 
     const cancelSwap = useCallback(() => setSwapSource(null), []);
 
+    useEffect(() => {
+        const element = previewRef.current;
+        if (!element || typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(([entry]) => {
+            const borderWidth = entry.borderBoxSize?.[0]?.inlineSize ?? element.getBoundingClientRect().width;
+            setPreviewWidth(borderWidth);
+        });
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, []);
+
+    const handleTabKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const current = TAB_ORDER.indexOf(tab);
+        const next = event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+                ? TAB_ORDER.length - 1
+                : (current + (event.key === 'ArrowRight' ? 1 : -1) + TAB_ORDER.length) % TAB_ORDER.length;
+        setTab(TAB_ORDER[next]);
+        const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+        buttons[next]?.focus();
+    };
+
     return (
         <div className="flex h-dvh flex-col overflow-hidden bg-slate-950 text-white">
             <header className="flex shrink-0 items-center justify-between border-b border-slate-700/80 bg-slate-900/90 px-4 py-3 backdrop-blur-xl">
@@ -159,12 +190,13 @@ export default function CollageEditor({
             <div className="flex min-h-0 flex-1 flex-col md:flex-row">
                 <section className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-auto p-4 sm:p-6 md:justify-center" aria-label="Collage preview">
                     <div
+                        ref={previewRef}
                         className="relative w-full max-w-md shrink-0 overflow-hidden shadow-2xl shadow-black/30 ring-1 ring-white/10"
                         style={{
                             aspectRatio,
                             background: collageStyle.background,
-                            padding: collageStyle.padding,
-                            borderRadius: collageStyle.cornerRadius,
+                            padding: collageStyle.padding * styleScale,
+                            borderRadius: collageStyle.cornerRadius * styleScale,
                         }}
                     >
                         <div className="relative h-full w-full">
@@ -184,8 +216,8 @@ export default function CollageEditor({
                                         isSelected={isSelected}
                                         isSwapSource={swapSource === slot.id}
                                         swapArmed={!!swapSource && swapSource !== slot.id}
-                                        cornerRadius={collageStyle.cornerRadius}
-                                        halfGap={collageStyle.gap / 2}
+                                        cornerRadius={collageStyle.cornerRadius * styleScale}
+                                        halfGap={(collageStyle.gap * styleScale) / 2}
                                         onTap={handleTap}
                                         onLongPress={handleLongPress}
                                         onEditsChange={handleEditsChange}
@@ -202,15 +234,15 @@ export default function CollageEditor({
                 </section>
 
                 <aside className="flex shrink-0 flex-col border-t border-slate-700 bg-slate-900 md:w-[27rem] md:border-l md:border-t-0" aria-label="Editing tools">
-                    <div className="flex shrink-0 border-b border-slate-700" role="tablist" aria-label="Editing tools">
-                        <TabButton active={tab === 'layouts'} onClick={() => setTab('layouts')} icon={<LayoutGrid className="h-5 w-5" />} label="Layouts" />
-                        <TabButton active={tab === 'adjust'} onClick={() => setTab('adjust')} icon={<Sliders className="h-5 w-5" />} label="Adjust" />
-                        <TabButton active={tab === 'filters'} onClick={() => setTab('filters')} icon={<Wand2 className="h-5 w-5" />} label="Filters" />
-                        <TabButton active={tab === 'format'} onClick={() => setTab('format')} icon={<Crop className="h-5 w-5" />} label="Format" />
-                        <TabButton active={tab === 'style'} onClick={() => setTab('style')} icon={<Palette className="h-5 w-5" />} label="Style" />
+                    <div className="flex shrink-0 border-b border-slate-700" role="tablist" aria-label="Editing tools" onKeyDown={handleTabKeyDown}>
+                        <TabButton tabId="layouts" active={tab === 'layouts'} onClick={() => setTab('layouts')} icon={<LayoutGrid className="h-5 w-5" />} label="Layouts" />
+                        <TabButton tabId="adjust" active={tab === 'adjust'} onClick={() => setTab('adjust')} icon={<Sliders className="h-5 w-5" />} label="Adjust" />
+                        <TabButton tabId="filters" active={tab === 'filters'} onClick={() => setTab('filters')} icon={<Wand2 className="h-5 w-5" />} label="Filters" />
+                        <TabButton tabId="format" active={tab === 'format'} onClick={() => setTab('format')} icon={<Crop className="h-5 w-5" />} label="Format" />
+                        <TabButton tabId="style" active={tab === 'style'} onClick={() => setTab('style')} icon={<Palette className="h-5 w-5" />} label="Style" />
                     </div>
 
-                    <div id="editor-tool-panel" role="tabpanel" className="max-h-[40vh] overflow-y-auto md:max-h-none md:flex-1">
+                    <div id="editor-tool-panel" role="tabpanel" aria-labelledby={`editor-tab-${tab}`} className="max-h-[40vh] overflow-y-auto md:max-h-none md:flex-1">
                         {tab === 'layouts' && (
                             <LayoutsTab templates={availableTemplates} selectedTemplate={selectedTemplate} onTemplateSelect={handleTemplateSelect} />
                         )}
@@ -269,6 +301,8 @@ const EditableSlot = React.memo(function EditableSlot({
 }: EditableSlotProps) {
     const innerRef = useRef<HTMLDivElement>(null);
     const imgAspectRef = useRef<number>(0);
+    const [imgAspect, setImgAspect] = useState(0);
+    const [slotSize, setSlotSize] = useState({ width: 0, height: 0 });
 
     const editsRef = useRef(edits);
     useEffect(() => { editsRef.current = edits; }, [edits]);
@@ -300,7 +334,7 @@ const EditableSlot = React.memo(function EditableSlot({
     const getPannedOffsets = useCallback((e: PhotoEdits, dxPx: number, dyPx: number, scale = e.scale) => {
         const rect = innerRef.current?.getBoundingClientRect();
         if (!rect || rect.width === 0 || rect.height === 0) return null;
-        const m = maxOffsetPct(imgAspectRef.current, rect.width, rect.height, scale);
+        const m = maxOffsetPct(imgAspectRef.current, rect.width, rect.height, scale, e.rotation);
         return {
             offsetX: Math.max(-m.x, Math.min(m.x, e.offsetX + (dxPx / rect.width) * 100)),
             offsetY: Math.max(-m.y, Math.min(m.y, e.offsetY + (dyPx / rect.height) * 100)),
@@ -320,12 +354,20 @@ const EditableSlot = React.memo(function EditableSlot({
         }
     }, [commitEditsChange]);
 
-    useEffect(() => { reclamp(); }, [edits.scale, edits.offsetX, edits.offsetY, reclamp]);
+    useEffect(() => { reclamp(); }, [edits.scale, edits.rotation, edits.offsetX, edits.offsetY, reclamp]);
 
     useEffect(() => {
         const el = innerRef.current;
         if (!el || typeof ResizeObserver === 'undefined') return;
-        const ro = new ResizeObserver(() => reclamp());
+        const ro = new ResizeObserver(([entry]) => {
+            const { width, height } = entry.contentRect;
+            setSlotSize((prev) => (
+                Math.abs(prev.width - width) > 0.5 || Math.abs(prev.height - height) > 0.5
+                    ? { width, height }
+                    : prev
+            ));
+            reclamp();
+        });
         ro.observe(el);
         return () => ro.disconnect();
     }, [reclamp]);
@@ -439,6 +481,24 @@ const EditableSlot = React.memo(function EditableSlot({
         onTap(slotId);
     };
 
+    const hasGeometry = imgAspect > 0 && slotSize.width > 0 && slotSize.height > 0;
+    const imageIsWider = hasGeometry && imgAspect >= slotSize.width / slotSize.height;
+    const baseWidth = imageIsWider ? slotSize.height * imgAspect : slotSize.width;
+    const baseHeight = imageIsWider ? slotSize.height : slotSize.width / imgAspect;
+    const displayScale = hasGeometry
+        ? effectivePhotoScale(edits, imgAspect, slotSize.width, slotSize.height)
+        : edits.scale;
+
+    const handleImageLoad = (event: React.SyntheticEvent<HTMLImageElement>) => {
+        const target = event.currentTarget;
+        if (target.naturalWidth && target.naturalHeight) {
+            const nextAspect = target.naturalWidth / target.naturalHeight;
+            imgAspectRef.current = nextAspect;
+            setImgAspect(nextAspect);
+            reclamp();
+        }
+    };
+
     return (
         <div
             data-slot-id={slot.id}
@@ -472,34 +532,48 @@ const EditableSlot = React.memo(function EditableSlot({
                     WebkitUserSelect: 'none',
                 }}
             >
-                {photo ? (
+                {photo ? (hasGeometry ? (
                     <div
-                        className="absolute inset-0"
+                        className="pointer-events-none absolute h-0 w-0"
                         style={{
-                            transform: editsToTransform(edits),
-                            filter: editsToCssFilter(edits),
-                            transformOrigin: 'center center',
-                            willChange: 'transform, filter',
+                            left: `calc(50% + ${edits.offsetX}%)`,
+                            top: `calc(50% + ${edits.offsetY}%)`,
                         }}
                     >
                         <Image
                             src={photo.previewUrl}
                             alt=""
-                            fill
+                            width={Math.max(1, Math.round(baseWidth))}
+                            height={Math.max(1, Math.round(baseHeight))}
                             unoptimized
-                            className="object-cover pointer-events-none"
-                            sizes="(max-width: 768px) 100vw, 50vw"
                             draggable={false}
-                            onLoad={(ev) => {
-                                const t = ev.target as HTMLImageElement;
-                                if (t.naturalWidth && t.naturalHeight) {
-                                    imgAspectRef.current = t.naturalWidth / t.naturalHeight;
-                                    reclamp();
-                                }
+                            onLoad={handleImageLoad}
+                            style={{
+                                position: 'absolute',
+                                left: -baseWidth / 2,
+                                top: -baseHeight / 2,
+                                width: baseWidth,
+                                height: baseHeight,
+                                maxWidth: 'none',
+                                filter: editsToCssFilter(edits),
+                                transform: `scale(${displayScale}) rotate(${normalizeRotation(edits.rotation)}deg)`,
+                                transformOrigin: 'center center',
+                                willChange: 'transform, filter',
                             }}
                         />
                     </div>
-                ) : null}
+                ) : (
+                    <Image
+                        src={photo.previewUrl}
+                        alt=""
+                        fill
+                        unoptimized
+                        className="pointer-events-none object-cover"
+                        sizes="(max-width: 768px) 100vw, 50vw"
+                        draggable={false}
+                        onLoad={handleImageLoad}
+                    />
+                )) : null}
 
                 {/* Swap-target hint badge */}
                 {swapArmed && photo && (
@@ -516,15 +590,17 @@ const EditableSlot = React.memo(function EditableSlot({
 
 /* ============================== Tabs ============================== */
 
-function TabButton({ active, onClick, icon, label }: {
-    active: boolean; onClick: () => void; icon: React.ReactNode; label: string;
+function TabButton({ tabId, active, onClick, icon, label }: {
+    tabId: Tab; active: boolean; onClick: () => void; icon: React.ReactNode; label: string;
 }) {
     return (
         <button
             onClick={onClick}
+            id={`editor-tab-${tabId}`}
             role="tab"
             aria-selected={active}
             aria-controls="editor-tool-panel"
+            tabIndex={active ? 0 : -1}
             className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors
                 ${active ? 'text-blue-400 border-b-2 border-blue-500 bg-slate-700/40' : 'text-slate-400 hover:text-slate-200'}`}
         >
@@ -606,8 +682,8 @@ function AdjustTab({
     return (
         <div className="px-4 py-3 space-y-4">
             <div className="flex flex-wrap gap-2">
-                <QuickButton onClick={() => onUpdate({ rotation: edits.rotation - ROT_STEP })} icon={<RotateCcw className="w-4 h-4" />} label="Rotate L" />
-                <QuickButton onClick={() => onUpdate({ rotation: edits.rotation + ROT_STEP })} icon={<RotateCw className="w-4 h-4" />} label="Rotate R" />
+                <QuickButton onClick={() => onUpdate({ rotation: normalizeRotation(edits.rotation - ROT_STEP) })} icon={<RotateCcw className="w-4 h-4" />} label="Rotate L" />
+                <QuickButton onClick={() => onUpdate({ rotation: normalizeRotation(edits.rotation + ROT_STEP) })} icon={<RotateCw className="w-4 h-4" />} label="Rotate R" />
                 <QuickButton onClick={() => onUpdate({ scale: Math.min(3, edits.scale + SCALE_STEP) })} icon={<ZoomIn className="w-4 h-4" />} label="Zoom +" />
                 <QuickButton onClick={() => onUpdate({ scale: Math.max(1, edits.scale - SCALE_STEP) })} icon={<ZoomOut className="w-4 h-4" />} label="Zoom −" />
                 <QuickButton onClick={() => onUpdate({ offsetY: edits.offsetY - PAN_STEP })} icon={<ArrowUp className="w-4 h-4" />} label="Up" />

@@ -16,6 +16,7 @@ interface PhotoSelectionProps {
     onBack: () => void;
     isProcessing?: boolean;
     processingProgress?: { current: number; total: number };
+    importNotice?: string | null;
 }
 
 export default function PhotoSelection({
@@ -28,6 +29,7 @@ export default function PhotoSelection({
     onBack,
     isProcessing = false,
     processingProgress = { current: 0, total: 0 },
+    importNotice = null,
 }: PhotoSelectionProps) {
     const [isDragging, setIsDragging] = useState(false);
     const canAddMore = photos.length < maxPhotos;
@@ -93,6 +95,12 @@ export default function PhotoSelection({
                     <p className="mt-1 text-sm text-slate-500">Add 2 to {maxPhotos} photos. You can adjust each crop in the next step.</p>
                 </div>
 
+                {importNotice && (
+                    <p className="mb-5 rounded-xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800" role="alert">
+                        {importNotice}
+                    </p>
+                )}
+
                 <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-4 md:grid-cols-5">
                     {photos.map((photo, index) => (
                         <div key={photo.previewUrl} className="group relative aspect-square overflow-hidden rounded-2xl bg-slate-200 shadow-sm ring-1 ring-slate-900/5">
@@ -131,7 +139,7 @@ export default function PhotoSelection({
                     >
                         <ImagePlus className="h-9 w-9 text-indigo-500" />
                         <span className="mt-4 text-base font-semibold text-slate-800">Choose photos or drop them here</span>
-                        <span className="mt-1 text-sm text-slate-500">JPG, PNG, WebP, HEIC, and other image formats</span>
+                        <span className="mt-1 text-sm text-slate-500">JPG, PNG, WebP, and other browser-supported images</span>
                     </button>
                 )}
 

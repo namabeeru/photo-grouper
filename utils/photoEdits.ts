@@ -84,6 +84,48 @@ function clampNum(v: number, lo: number, hi: number): number {
     return Math.max(lo, Math.min(hi, v));
 }
 
+/** Keep editor rotations inside the slider's canonical range. */
+export function normalizeRotation(rotation: number): number {
+    const normalized = ((rotation + 180) % 360 + 360) % 360 - 180;
+    return normalized === -180 && rotation > 0 ? 180 : normalized;
+}
+
+function coverDimensions(imgAspect: number, slotW: number, slotH: number) {
+    const slotAspect = slotW / slotH;
+    if (imgAspect >= slotAspect) {
+        return { width: slotH * imgAspect, height: slotH };
+    }
+    return { width: slotW, height: slotW / imgAspect };
+}
+
+/** Extra scale needed for a rotated cover-fit photo to cover every slot corner. */
+export function rotationCoverScale(
+    imgAspect: number,
+    slotW: number,
+    slotH: number,
+    rotation: number,
+): number {
+    if (!imgAspect || !isFinite(imgAspect) || slotW <= 0 || slotH <= 0) return 1;
+    const base = coverDimensions(imgAspect, slotW, slotH);
+    const radians = (normalizeRotation(rotation) * Math.PI) / 180;
+    const c = Math.abs(Math.cos(radians));
+    const s = Math.abs(Math.sin(radians));
+    return Math.max(
+        1,
+        (c * slotW + s * slotH) / base.width,
+        (s * slotW + c * slotH) / base.height,
+    );
+}
+
+export function effectivePhotoScale(
+    edits: PhotoEdits,
+    imgAspect: number,
+    slotW: number,
+    slotH: number,
+): number {
+    return edits.scale * rotationCoverScale(imgAspect, slotW, slotH, edits.rotation);
+}
+
 /**
  * How far (as a % of the slot's width/height) a photo can be panned before its
  * edge would pull inside the slot and reveal empty space.
@@ -98,26 +140,33 @@ export function maxOffsetPct(
     slotW: number,
     slotH: number,
     scale: number,
+    rotation = 0,
 ): { x: number; y: number } {
     if (!imgAspect || !isFinite(imgAspect) || slotW <= 0 || slotH <= 0) {
         return { x: 0, y: 0 };
     }
-    const slotAspect = slotW / slotH;
-    let renderedW: number;
-    let renderedH: number;
-    if (imgAspect >= slotAspect) {
-        // Image is wider than the slot → height fills, width overflows.
-        renderedH = slotH;
-        renderedW = slotH * imgAspect;
-    } else {
-        renderedW = slotW;
-        renderedH = slotW / imgAspect;
+
+    const base = coverDimensions(imgAspect, slotW, slotH);
+    const coverScale = rotationCoverScale(imgAspect, slotW, slotH, rotation);
+    const renderedW = base.width * scale * coverScale;
+    const renderedH = base.height * scale * coverScale;
+    const radians = (normalizeRotation(rotation) * Math.PI) / 180;
+    const c = Math.abs(Math.cos(radians));
+    const s = Math.abs(Math.sin(radians));
+
+    // At 0°/180°, preserve the full independent pan range.
+    if (s < 1e-8) {
+        const maxX = Math.max(0, (renderedW - slotW) / 2);
+        const maxY = Math.max(0, (renderedH - slotH) / 2);
+        return { x: (maxX / slotW) * 100, y: (maxY / slotH) * 100 };
     }
-    renderedW *= scale;
-    renderedH *= scale;
-    const maxX = Math.max(0, (renderedW - slotW) / 2);
-    const maxY = Math.max(0, (renderedH - slotH) / 2);
-    return { x: (maxX / slotW) * 100, y: (maxY / slotH) * 100 };
+
+    // A conservative translation box guarantees every slot corner remains
+    // covered even when both axes are panned to their limits simultaneously.
+    const uMargin = renderedW / 2 - (c * slotW + s * slotH) / 2;
+    const vMargin = renderedH / 2 - (s * slotW + c * slotH) / 2;
+    const safePx = Math.max(0, Math.min(uMargin, vMargin) / (c + s));
+    return { x: (safePx / slotW) * 100, y: (safePx / slotH) * 100 };
 }
 
 /**
@@ -130,7 +179,7 @@ export function clampOffsets(
     slotW: number,
     slotH: number,
 ): { offsetX: number; offsetY: number } {
-    const m = maxOffsetPct(imgAspect, slotW, slotH, edits.scale);
+    const m = maxOffsetPct(imgAspect, slotW, slotH, edits.scale, edits.rotation);
     return {
         offsetX: clampNum(edits.offsetX, -m.x, m.x),
         offsetY: clampNum(edits.offsetY, -m.y, m.y),
@@ -152,10 +201,10 @@ export function editsToCssFilter(edits: PhotoEdits): string {
  * Translate slot-relative offsets into a CSS transform string applied to
  * the photo element inside its slot container.
  */
-export function editsToTransform(edits: PhotoEdits): string {
+export function editsToTransform(edits: PhotoEdits, effectiveScale = edits.scale): string {
     const tx = edits.offsetX;
     const ty = edits.offsetY;
-    return `translate(${tx}%, ${ty}%) scale(${edits.scale}) rotate(${edits.rotation}deg)`;
+    return `translate(${tx}%, ${ty}%) scale(${effectiveScale}) rotate(${normalizeRotation(edits.rotation)}deg)`;
 }
 
 // ===== Collage-wide style =====

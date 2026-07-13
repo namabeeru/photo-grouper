@@ -3,19 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "npm run prepare:compression-worker",
     "dev": "next dev",
-    "build": "next build --webpack",
+    "build": "npm run prepare:compression-worker && next build --webpack && npm run verify:pwa",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsx scripts/photo-edits.test.mjs",
+    "prepare:compression-worker": "node scripts/prepare-compression-worker.mjs",
+    "verify:pwa": "node scripts/verify-pwa.mjs"
   },
   "dependencies": {
-    "@ducanh2912/next-pwa": "^10.2.9",
-    "@vercel/analytics": "^2.0.1",
-    "browser-image-compression": "^2.0.2",
-    "lucide-react": "^0.561.0",
-    "next": "^16.2.10",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "@ducanh2912/next-pwa": "10.2.9",
+    "@vercel/analytics": "2.0.1",
+    "browser-image-compression": "2.0.2",
+    "lucide-react": "0.561.0",
+    "next": "16.2.10",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -23,8 +27,9 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "^16.2.10",
+    "eslint-config-next": "16.2.10",
     "tailwindcss": "^4",
+    "tsx": "4.23.1",
     "typescript": "^5"
   },
   "overrides": {

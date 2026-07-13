@@ -21,14 +21,16 @@ function getIsIOS(): boolean {
         || (nav.platform === 'MacIntel' && (nav.maxTouchPoints ?? 0) > 1);
 }
 
-export default function InstallPrompt() {
+export default function InstallPrompt({ enabled = true }: { enabled?: boolean }) {
     const [showPrompt, setShowPrompt] = useState(false);
     const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [isIOS] = useState(getIsIOS);
     const [isStandalone] = useState(getIsStandalone);
 
     useEffect(() => {
-        if (isStandalone) return;
+        if (isStandalone || !enabled) {
+            return;
+        }
 
         // Check if dismissed before
         const dismissed = localStorage.getItem('pwa-prompt-dismissed');
@@ -37,7 +39,7 @@ export default function InstallPrompt() {
         let promptTimer: number | null = null;
         const schedulePrompt = () => {
             if (promptTimer !== null) window.clearTimeout(promptTimer);
-            promptTimer = window.setTimeout(() => setShowPrompt(true), 2000);
+            promptTimer = window.setTimeout(() => setShowPrompt(true), 15000);
         };
 
         if (isIOS) {
@@ -61,7 +63,7 @@ export default function InstallPrompt() {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
             if (promptTimer !== null) window.clearTimeout(promptTimer);
         };
-    }, [isIOS, isStandalone]);
+    }, [enabled, isIOS, isStandalone]);
 
     const handleInstall = async () => {
         if (!deferredPrompt) return;
@@ -80,7 +82,7 @@ export default function InstallPrompt() {
         localStorage.setItem('pwa-prompt-dismissed', 'true');
     };
 
-    if (!showPrompt || isStandalone) return null;
+    if (!enabled || !showPrompt || isStandalone) return null;
 
     return (
         <div className="fixed bottom-4 left-4 right-4 z-50 animate-slide-up">
@@ -138,6 +140,9 @@ export default function InstallPrompt() {
         }
         .animate-slide-up {
           animation: slide-up 0.3s ease-out;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .animate-slide-up { animation: none; }
         }
       `}</style>
         </div>

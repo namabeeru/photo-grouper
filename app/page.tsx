@@ -15,6 +15,7 @@ import { PhotoData } from '@/types/photo';
 type AppPhase = 'home' | 'selection' | 'editor';
 
 const MAX_PHOTOS = 9;
+const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
 
 const initAssignments = (template: CollageTemplate, photoCount: number) => {
   const assignments = new Map<string, number>();
@@ -49,6 +50,7 @@ export default function Home() {
   // Processing state for image compression
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState({ current: 0, total: 0 });
+  const [importNotice, setImportNotice] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<PhotoData[]>([]);
@@ -77,9 +79,17 @@ export default function Home() {
   }, []);
 
   const processFiles = useCallback(async (incomingFiles: File[]) => {
-    const files = incomingFiles
-      .filter((file) => file.type.startsWith('image/'))
+    const imageFiles = incomingFiles.filter((file) => file.type.startsWith('image/'));
+    const oversizedCount = imageFiles.filter((file) => file.size > MAX_SOURCE_BYTES).length;
+    const files = imageFiles
+      .filter((file) => file.size <= MAX_SOURCE_BYTES)
       .slice(0, MAX_PHOTOS - photos.length);
+
+    if (oversizedCount > 0) {
+      setImportNotice(`${oversizedCount} photo${oversizedCount === 1 ? '' : 's'} skipped because the file exceeded 25 MB.`);
+    } else {
+      setImportNotice(null);
+    }
 
     if (files.length === 0 || processingRef.current) return;
 
@@ -95,37 +105,31 @@ export default function Home() {
       maxSizeMB: 1.5,
       maxWidthOrHeight: 1920,
       useWebWorker: true,
+      libURL: '/browser-image-compression.js',
     };
 
     try {
-      const newPhotos = new Array<PhotoData>(files.length);
-      let nextIndex = 0;
-      let completed = 0;
+      const newPhotos: PhotoData[] = [];
+      let failedCount = 0;
 
-      // Compress a few images at a time. This is faster than a serial loop while
-      // avoiding the memory spike caused by processing nine large photos at once.
-      const workers = Array.from({ length: Math.min(3, files.length) }, async () => {
-        while (nextIndex < files.length) {
-          const index = nextIndex++;
-          const original = files[index];
-          let output = original;
-
-          try {
-            output = await imageCompression(original, compressionOptions);
-          } catch (error) {
-            console.error('Failed to compress image:', error);
-          }
-
-          newPhotos[index] = {
+      // Decode/compress sequentially to cap peak memory on mobile devices.
+      for (const [index, original] of files.entries()) {
+        try {
+          const output = await imageCompression(original, compressionOptions);
+          newPhotos.push({
             file: output,
             previewUrl: URL.createObjectURL(output),
-          };
-          completed += 1;
-          setProcessingProgress({ current: completed, total: files.length });
+          });
+        } catch (error) {
+          failedCount += 1;
+          console.error('Failed to prepare image:', error);
         }
-      });
+        setProcessingProgress({ current: index + 1, total: files.length });
+      }
 
-      await Promise.all(workers);
+      if (failedCount > 0) {
+        setImportNotice(`${failedCount} photo${failedCount === 1 ? '' : 's'} could not be decoded and ${failedCount === 1 ? 'was' : 'were'} skipped.`);
+      }
       setPhotos((prev) => {
         const capacity = Math.max(0, MAX_PHOTOS - prev.length);
         const accepted = newPhotos.slice(0, capacity);
@@ -305,6 +309,7 @@ export default function Home() {
           onBack={handleBackToHome}
           isProcessing={isProcessing}
           processingProgress={processingProgress}
+          importNotice={importNotice}
         />
       )}
 
@@ -332,7 +337,7 @@ export default function Home() {
         />
       )}
 
-      <InstallPrompt />
+      <InstallPrompt enabled={phase !== 'editor'} />
     </>
   );
 }

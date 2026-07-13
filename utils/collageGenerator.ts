@@ -14,6 +14,7 @@ import {
   DEFAULT_STYLE,
   editsToCssFilter,
   clampOffsets,
+  effectivePhotoScale,
 } from './photoEdits';
 
 import { PhotoData } from '@/types/photo';
@@ -112,7 +113,8 @@ function drawSlot(
 
   ctx.translate(x + w / 2, y + h / 2);
   ctx.translate((offsetX / 100) * w, (offsetY / 100) * h);
-  ctx.scale(edits.scale, edits.scale);
+  const displayScale = effectivePhotoScale(edits, imgAspect, w, h);
+  ctx.scale(displayScale, displayScale);
   ctx.rotate((edits.rotation * Math.PI) / 180);
 
   ctx.drawImage(img, -nw / 2, -nh / 2, nw, nh);
