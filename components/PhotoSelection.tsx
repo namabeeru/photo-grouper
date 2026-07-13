@@ -1,18 +1,16 @@
 'use client';
 
-import React from 'react';
-import { Plus, X, Sparkles, Loader2, ChevronLeft } from 'lucide-react';
+import { useState } from 'react';
 import Image from 'next/image';
+import { ChevronLeft, ImagePlus, Loader2, Plus, Sparkles, X } from 'lucide-react';
 
-interface PhotoData {
-    file: File;
-    previewUrl: string;
-}
+import { PhotoData } from '@/types/photo';
 
 interface PhotoSelectionProps {
     photos: PhotoData[];
     maxPhotos: number;
     onAddPhotos: () => void;
+    onDropPhotos: (files: File[]) => void;
     onRemovePhoto: (index: number) => void;
     onGroupIt: () => void;
     onBack: () => void;
@@ -24,124 +22,137 @@ export default function PhotoSelection({
     photos,
     maxPhotos,
     onAddPhotos,
+    onDropPhotos,
     onRemovePhoto,
     onGroupIt,
     onBack,
     isProcessing = false,
     processingProgress = { current: 0, total: 0 },
 }: PhotoSelectionProps) {
+    const [isDragging, setIsDragging] = useState(false);
     const canAddMore = photos.length < maxPhotos;
     const canGroupIt = photos.length >= 2;
 
+    const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        setIsDragging(false);
+        if (!canAddMore || isProcessing) return;
+        const files = Array.from(event.dataTransfer.files).filter((file) => file.type.startsWith('image/'));
+        if (files.length) onDropPhotos(files);
+    };
+
     return (
-        <div className="min-h-screen flex flex-col bg-slate-50 relative">
-            {/* Processing Overlay */}
+        <main
+            className="relative flex min-h-dvh flex-col bg-[#f7f8fb] text-slate-950"
+            onDragEnter={(event) => { event.preventDefault(); if (canAddMore) setIsDragging(true); }}
+            onDragOver={(event) => event.preventDefault()}
+            onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragging(false);
+            }}
+            onDrop={handleDrop}
+        >
             {isProcessing && (
-                <div className="absolute inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
-                    <Loader2 className="w-12 h-12 text-white animate-spin" />
+                <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-950/70 backdrop-blur-sm" role="status" aria-live="polite">
+                    <Loader2 className="h-10 w-10 animate-spin text-white" />
                     <div className="text-center">
-                        <p className="text-white text-lg font-semibold">Optimizing photos...</p>
-                        {processingProgress.total > 1 && (
-                            <p className="text-slate-300 text-sm mt-1">
-                                {processingProgress.current} of {processingProgress.total}
-                            </p>
-                        )}
+                        <p className="text-base font-semibold text-white">Preparing your photos</p>
+                        <p className="mt-1 text-sm text-slate-300">
+                            {processingProgress.current} of {processingProgress.total}
+                        </p>
                     </div>
                 </div>
             )}
 
-            {/* Header */}
-            <header className="flex items-center px-4 py-4 bg-white border-b border-slate-200">
-                <button
-                    onClick={onBack}
-                    aria-label="Back to home"
-                    className="-ml-1.5 p-1.5 rounded-full text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
-                >
-                    <ChevronLeft className="w-5 h-5" />
-                </button>
-                <h1 className="ml-1.5 flex-1 text-lg font-semibold text-slate-800">Select Photos</h1>
-                <span className="text-sm text-slate-500">
-                    {photos.length} of {maxPhotos}
-                </span>
+            {isDragging && (
+                <div className="pointer-events-none fixed inset-3 z-40 flex items-center justify-center rounded-[2rem] border-2 border-dashed border-indigo-500 bg-indigo-50/95 backdrop-blur-sm">
+                    <div className="text-center text-indigo-700">
+                        <ImagePlus className="mx-auto h-10 w-10" />
+                        <p className="mt-3 font-semibold">Drop photos to add them</p>
+                    </div>
+                </div>
+            )}
+
+            <header inert={isProcessing ? true : undefined} className="border-b border-slate-200/80 bg-white/80 backdrop-blur-xl">
+                <div className="mx-auto flex h-16 w-full max-w-5xl items-center px-4 sm:px-6">
+                    <button onClick={onBack} aria-label="Back to home" className="-ml-2 rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900">
+                        <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <div className="ml-2 flex-1">
+                        <h1 className="text-base font-semibold tracking-tight text-slate-900">Choose your photos</h1>
+                        <p className="hidden text-xs text-slate-500 sm:block">Pick the moments you want in one frame</p>
+                    </div>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold tabular-nums text-slate-600">
+                        {photos.length} / {maxPhotos}
+                    </span>
+                </div>
             </header>
 
-            {/* Photo Grid */}
-            <div className="flex-1 p-4 overflow-auto">
-                <div className="grid grid-cols-3 gap-2 max-w-lg mx-auto">
-                    {/* Existing photos */}
+            <section inert={isProcessing ? true : undefined} className="mx-auto flex w-full max-w-5xl flex-1 flex-col px-4 py-6 sm:px-6 sm:py-10">
+                <div className="mb-6">
+                    <h2 className="text-2xl font-semibold tracking-tight text-slate-950">Build your set</h2>
+                    <p className="mt-1 text-sm text-slate-500">Add 2 to {maxPhotos} photos. You can adjust each crop in the next step.</p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-4 md:grid-cols-5">
                     {photos.map((photo, index) => (
-                        <div
-                            key={index}
-                            className="relative aspect-square rounded-xl overflow-hidden bg-slate-200 shadow-sm"
-                        >
-                            <Image
-                                src={photo.previewUrl}
-                                alt={`Photo ${index + 1}`}
-                                fill
-                                className="object-cover"
-                            />
-                            {/* Remove button */}
+                        <div key={photo.previewUrl} className="group relative aspect-square overflow-hidden rounded-2xl bg-slate-200 shadow-sm ring-1 ring-slate-900/5">
+                            <Image src={photo.previewUrl} alt={`Selected photo ${index + 1}`} fill unoptimized className="object-cover" sizes="(max-width: 640px) 33vw, 180px" />
                             <button
                                 onClick={() => onRemovePhoto(index)}
                                 aria-label={`Remove photo ${index + 1}`}
-                                className="absolute top-1.5 right-1.5 p-1.5 bg-black/50 hover:bg-red-500 text-white rounded-full transition-colors backdrop-blur-sm"
+                                className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-slate-950/65 text-white backdrop-blur-sm transition hover:bg-red-500"
                             >
-                                <X className="w-4 h-4" />
+                                <X className="h-4 w-4" />
                             </button>
-                            {/* Photo number */}
-                            <span className="absolute bottom-1.5 left-1.5 px-2 py-0.5 bg-black/50 text-white text-xs rounded-full backdrop-blur-sm">
+                            <span className="absolute bottom-2 left-2 flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-950/65 px-1.5 text-xs font-semibold text-white backdrop-blur-sm">
                                 {index + 1}
                             </span>
                         </div>
                     ))}
 
-                    {/* Add more button */}
                     {canAddMore && (
                         <button
                             onClick={onAddPhotos}
                             aria-label="Add photos"
-                            className="aspect-square rounded-xl border-2 border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 flex flex-col items-center justify-center gap-2 transition-all"
+                            className="flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-white/50 text-slate-500 transition hover:border-indigo-400 hover:bg-indigo-50 hover:text-indigo-600"
                         >
-                            <Plus className="w-8 h-8 text-slate-400" />
-                            <span className="text-xs text-slate-400">Add</span>
+                            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+                                <Plus className="h-5 w-5" />
+                            </span>
+                            <span className="text-xs font-semibold">Add photos</span>
                         </button>
                     )}
                 </div>
 
-                {/* Empty state */}
                 {photos.length === 0 && (
-                    <div className="text-center mt-12">
-                        <p className="text-slate-400">
-                            Tap the + button to add photos
-                        </p>
-                    </div>
+                    <button
+                        onClick={onAddPhotos}
+                        className="mt-3 flex min-h-64 w-full flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-300 bg-white/60 px-6 text-center transition hover:border-indigo-400 hover:bg-indigo-50/70"
+                    >
+                        <ImagePlus className="h-9 w-9 text-indigo-500" />
+                        <span className="mt-4 text-base font-semibold text-slate-800">Choose photos or drop them here</span>
+                        <span className="mt-1 text-sm text-slate-500">JPG, PNG, WebP, HEIC, and other image formats</span>
+                    </button>
                 )}
 
-                {/* Helper text */}
-                {photos.length > 0 && photos.length < 2 && (
-                    <p className="text-center mt-6 text-sm text-slate-400">
-                        Select at least 2 photos to create a collage
-                    </p>
+                {photos.length === 1 && (
+                    <p className="mt-5 text-sm font-medium text-amber-700" role="status">Add one more photo to continue.</p>
                 )}
-            </div>
+            </section>
 
-            {/* Bottom CTA */}
-            <div className="p-4 bg-white border-t border-slate-200 safe-area-inset-bottom">
-                <button
-                    onClick={onGroupIt}
-                    disabled={!canGroupIt}
-                    className={`
-                        w-full py-4 rounded-2xl font-semibold text-lg transition-all flex items-center justify-center gap-2
-                        ${canGroupIt
-                            ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/30 active:scale-[0.98]'
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                        }
-                    `}
-                >
-                    <Sparkles className="w-5 h-5" />
-                    Group It!
-                </button>
-            </div>
-        </div>
+            <footer inert={isProcessing ? true : undefined} className="sticky bottom-0 border-t border-slate-200/80 bg-white/90 px-4 py-3 backdrop-blur-xl safe-area-inset-bottom">
+                <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4">
+                    <p className="hidden text-sm text-slate-500 sm:block">Your originals are never uploaded.</p>
+                    <button
+                        onClick={onGroupIt}
+                        disabled={!canGroupIt}
+                        className="ml-auto flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-7 font-semibold text-white shadow-lg shadow-slate-950/10 transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none sm:w-auto"
+                    >
+                        <Sparkles className="h-4 w-4" />
+                        Create collage
+                    </button>
+                </div>
+            </footer>
+        </main>
     );
 }

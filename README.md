@@ -40,7 +40,7 @@ Photo Grouper is a [Next.js](https://nextjs.org) PWA for turning 2–9 photos in
 | Styling | Tailwind CSS v4 |
 | Icons | Lucide React |
 | Image compression | browser-image-compression |
-| PWA | next-pwa |
+| PWA | @ducanh2912/next-pwa |
 
 ## Getting Started (self-hosting & development)
 
@@ -65,7 +65,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### Other commands
 
 ```bash
-npm run build   # Production build
+npm run build   # Production build (includes the offline service worker)
 npm run start   # Serve the production build
 npm run lint    # Run ESLint
 ```

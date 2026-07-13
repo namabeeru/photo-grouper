@@ -23,10 +23,7 @@ import {
     ASPECT_PRESETS,
 } from '@/utils/photoEdits';
 
-interface PhotoData {
-    file: File;
-    previewUrl: string;
-}
+import { PhotoData } from '@/types/photo';
 
 interface CollageEditorProps {
     photos: PhotoData[];
@@ -96,15 +93,13 @@ export default function CollageEditor({
 
     // ----- stable per-slot callbacks (so EditableSlot can be memoized) -----
     const handleTap = useCallback((slotId: string) => {
-        setSwapSource((prevSource) => {
-            if (prevSource) {
-                if (prevSource !== slotId) onSwapSlots(prevSource, slotId);
-                return null; // finalize or cancel the swap
-            }
-            onSlotClick(slotId);
-            return null;
-        });
-    }, [onSwapSlots, onSlotClick]);
+        if (swapSource) {
+            if (swapSource !== slotId) onSwapSlots(swapSource, slotId);
+            setSwapSource(null);
+            return;
+        }
+        onSlotClick(slotId);
+    }, [swapSource, onSwapSlots, onSlotClick]);
 
     const handleLongPress = useCallback((slotId: string) => {
         // Arm this slot for swapping. Light haptic where supported.
@@ -126,131 +121,121 @@ export default function CollageEditor({
     const cancelSwap = useCallback(() => setSwapSource(null), []);
 
     return (
-        <div className="min-h-screen flex flex-col bg-slate-900 text-white overflow-hidden">
-            {/* Header */}
-            <header className="flex items-center justify-between px-4 py-3 bg-slate-800/80 backdrop-blur-sm border-b border-slate-700">
+        <div className="flex h-dvh flex-col overflow-hidden bg-slate-950 text-white">
+            <header className="flex shrink-0 items-center justify-between border-b border-slate-700/80 bg-slate-900/90 px-4 py-3 backdrop-blur-xl">
                 <button
                     onClick={onCancel}
-                    className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors -ml-1 p-1"
+                    className="-ml-1 flex min-h-10 items-center gap-2 rounded-full px-2 text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
                 >
-                    <ArrowLeft className="w-5 h-5" />
-                    <span className="text-sm">Back</span>
+                    <ArrowLeft className="h-5 w-5" />
+                    <span className="text-sm">Photos</span>
                 </button>
+
+                <div className="hidden text-center sm:block">
+                    <p className="text-sm font-semibold text-white">Edit collage</p>
+                    <p className="text-[11px] text-slate-500">{photos.length} photos · {availableTemplates.length} layouts</p>
+                </div>
 
                 <button
                     onClick={onSave}
                     disabled={isSaving}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-medium rounded-full transition-all disabled:opacity-50"
+                    className="flex min-h-10 items-center gap-2 rounded-full bg-blue-500 px-5 font-medium text-white transition hover:bg-blue-400 disabled:opacity-50"
                 >
-                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                     <span>{isSaving ? 'Saving...' : 'Save'}</span>
                 </button>
             </header>
 
-            {/* Swap banner */}
             {swapSource && (
-                <div className="px-4 py-2.5 bg-amber-500 text-slate-900 text-sm font-medium flex items-center justify-center gap-2">
-                    <Repeat2 className="w-4 h-4" />
+                <div className="flex shrink-0 items-center justify-center gap-2 bg-amber-400 px-4 py-2.5 text-sm font-medium text-slate-950" role="status">
+                    <Repeat2 className="h-4 w-4" />
                     Tap another photo to swap
-                    <button
-                        onClick={cancelSwap}
-                        className="ml-2 px-2 py-0.5 rounded-full bg-slate-900/15 hover:bg-slate-900/25 text-slate-900 font-semibold"
-                    >
+                    <button onClick={cancelSwap} className="ml-2 rounded-full bg-slate-950/10 px-2 py-0.5 font-semibold hover:bg-slate-950/20">
                         Cancel
                     </button>
                 </div>
             )}
 
-            {/* Main Collage View */}
-            <div className="flex-1 flex flex-col items-center justify-center p-4 min-h-0">
-                <div
-                    className="relative w-full max-w-md shadow-2xl overflow-hidden"
-                    style={{
-                        aspectRatio,
-                        background: collageStyle.background,
-                        padding: collageStyle.padding,
-                        borderRadius: collageStyle.cornerRadius,
-                    }}
-                >
-                    <div className="relative w-full h-full">
-                        {selectedTemplate.slots.map((slot, slotIndex) => {
-                            const photoIndex = photoAssignments.get(slot.id);
-                            const photo = photoIndex !== undefined ? photos[photoIndex] : null;
-                            const isSelected = selectedSlot === slot.id && !swapSource;
-                            const edits = slotEdits.get(slot.id) ?? DEFAULT_EDITS;
+            <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+                <section className="flex min-h-0 flex-1 flex-col items-center justify-start overflow-auto p-4 sm:p-6 md:justify-center" aria-label="Collage preview">
+                    <div
+                        className="relative w-full max-w-md shrink-0 overflow-hidden shadow-2xl shadow-black/30 ring-1 ring-white/10"
+                        style={{
+                            aspectRatio,
+                            background: collageStyle.background,
+                            padding: collageStyle.padding,
+                            borderRadius: collageStyle.cornerRadius,
+                        }}
+                    >
+                        <div className="relative h-full w-full">
+                            {selectedTemplate.slots.map((slot, slotIndex) => {
+                                const photoIndex = photoAssignments.get(slot.id);
+                                const photo = photoIndex !== undefined ? photos[photoIndex] : null;
+                                const isSelected = selectedSlot === slot.id && !swapSource;
+                                const edits = slotEdits.get(slot.id) ?? DEFAULT_EDITS;
 
-                            return (
-                                <EditableSlot
-                                    key={slot.id}
-                                    slot={slot}
-                                    slotNumber={slotIndex + 1}
-                                    photo={photo}
-                                    edits={edits}
-                                    isSelected={isSelected}
-                                    isSwapSource={swapSource === slot.id}
-                                    swapArmed={!!swapSource && swapSource !== slot.id}
-                                    cornerRadius={collageStyle.cornerRadius}
-                                    halfGap={collageStyle.gap / 2}
-                                    onTap={handleTap}
-                                    onLongPress={handleLongPress}
-                                    onEditsChange={handleEditsChange}
-                                />
-                            );
-                        })}
+                                return (
+                                    <EditableSlot
+                                        key={slot.id}
+                                        slot={slot}
+                                        slotNumber={slotIndex + 1}
+                                        photo={photo}
+                                        edits={edits}
+                                        isSelected={isSelected}
+                                        isSwapSource={swapSource === slot.id}
+                                        swapArmed={!!swapSource && swapSource !== slot.id}
+                                        cornerRadius={collageStyle.cornerRadius}
+                                        halfGap={collageStyle.gap / 2}
+                                        onTap={handleTap}
+                                        onLongPress={handleLongPress}
+                                        onEditsChange={handleEditsChange}
+                                    />
+                                );
+                            })}
+                        </div>
                     </div>
-                </div>
 
-                {/* Gesture hint */}
-                <p className="mt-3 text-[11px] text-slate-500 text-center flex items-center gap-1.5 px-4">
-                    <Hand className="w-3.5 h-3.5 flex-shrink-0" />
-                    Tap to select · Drag to reposition · Pinch to zoom · Long-press to swap
-                </p>
-            </div>
+                    <p className="mt-3 flex items-center gap-1.5 px-4 text-center text-[11px] text-slate-500">
+                        <Hand className="h-3.5 w-3.5 shrink-0" />
+                        Tap to select · Drag to move · Pinch to zoom · Hold to swap
+                    </p>
+                </section>
 
-            {/* Bottom Panel */}
-            <div className="bg-slate-800 border-t border-slate-700 safe-area-inset-bottom">
-                {/* Tab bar */}
-                <div className="flex border-b border-slate-700">
-                    <TabButton active={tab === 'layouts'} onClick={() => setTab('layouts')} icon={<LayoutGrid className="w-5 h-5" />} label="Layouts" />
-                    <TabButton active={tab === 'adjust'} onClick={() => setTab('adjust')} icon={<Sliders className="w-5 h-5" />} label="Adjust" />
-                    <TabButton active={tab === 'filters'} onClick={() => setTab('filters')} icon={<Wand2 className="w-5 h-5" />} label="Filters" />
-                    <TabButton active={tab === 'format'} onClick={() => setTab('format')} icon={<Crop className="w-5 h-5" />} label="Format" />
-                    <TabButton active={tab === 'style'} onClick={() => setTab('style')} icon={<Palette className="w-5 h-5" />} label="Style" />
-                </div>
+                <aside className="flex shrink-0 flex-col border-t border-slate-700 bg-slate-900 md:w-[27rem] md:border-l md:border-t-0" aria-label="Editing tools">
+                    <div className="flex shrink-0 border-b border-slate-700" role="tablist" aria-label="Editing tools">
+                        <TabButton active={tab === 'layouts'} onClick={() => setTab('layouts')} icon={<LayoutGrid className="h-5 w-5" />} label="Layouts" />
+                        <TabButton active={tab === 'adjust'} onClick={() => setTab('adjust')} icon={<Sliders className="h-5 w-5" />} label="Adjust" />
+                        <TabButton active={tab === 'filters'} onClick={() => setTab('filters')} icon={<Wand2 className="h-5 w-5" />} label="Filters" />
+                        <TabButton active={tab === 'format'} onClick={() => setTab('format')} icon={<Crop className="h-5 w-5" />} label="Format" />
+                        <TabButton active={tab === 'style'} onClick={() => setTab('style')} icon={<Palette className="h-5 w-5" />} label="Style" />
+                    </div>
 
-                <div className="max-h-[40vh] overflow-y-auto">
-                    {tab === 'layouts' && (
-                        <LayoutsTab
-                            templates={availableTemplates}
-                            selectedTemplate={selectedTemplate}
-                            onTemplateSelect={handleTemplateSelect}
-                        />
-                    )}
-                    {tab === 'adjust' && (
-                        <AdjustTab
-                            selectedSlot={selectedSlot}
-                            edits={activeEdits}
-                            onUpdate={(updates) => selectedSlot && onUpdateSlotEdits(selectedSlot, updates)}
-                            onReset={() => selectedSlot && onResetSlotEdits(selectedSlot)}
-                            onArmSwap={armSwapFromButton}
-                        />
-                    )}
-                    {tab === 'filters' && (
-                        <FiltersTab
-                            selectedSlot={selectedSlot}
-                            selectedPhoto={selectedSlot ? photos[photoAssignments.get(selectedSlot) ?? -1] ?? null : null}
-                            currentFilter={activeEdits.filter}
-                            onPick={(filter) => selectedSlot && onUpdateSlotEdits(selectedSlot, { filter })}
-                            onApplyAll={(filter) => onApplyEditToAll({ filter })}
-                        />
-                    )}
-                    {tab === 'format' && (
-                        <FormatTab activeRatio={outputAspectRatio} onSelect={onSetAspectRatio} />
-                    )}
-                    {tab === 'style' && (
-                        <StyleTab style={collageStyle} onUpdate={onUpdateStyle} />
-                    )}
-                </div>
+                    <div id="editor-tool-panel" role="tabpanel" className="max-h-[40vh] overflow-y-auto md:max-h-none md:flex-1">
+                        {tab === 'layouts' && (
+                            <LayoutsTab templates={availableTemplates} selectedTemplate={selectedTemplate} onTemplateSelect={handleTemplateSelect} />
+                        )}
+                        {tab === 'adjust' && (
+                            <AdjustTab
+                                selectedSlot={selectedSlot}
+                                edits={activeEdits}
+                                onUpdate={(updates) => selectedSlot && onUpdateSlotEdits(selectedSlot, updates)}
+                                onReset={() => selectedSlot && onResetSlotEdits(selectedSlot)}
+                                onArmSwap={armSwapFromButton}
+                            />
+                        )}
+                        {tab === 'filters' && (
+                            <FiltersTab
+                                selectedSlot={selectedSlot}
+                                selectedPhoto={selectedSlot ? photos[photoAssignments.get(selectedSlot) ?? -1] ?? null : null}
+                                currentFilter={activeEdits.filter}
+                                onPick={(filter) => selectedSlot && onUpdateSlotEdits(selectedSlot, { filter })}
+                                onApplyAll={(filter) => onApplyEditToAll({ filter })}
+                            />
+                        )}
+                        {tab === 'format' && <FormatTab activeRatio={outputAspectRatio} onSelect={onSetAspectRatio} />}
+                        {tab === 'style' && <StyleTab style={collageStyle} onUpdate={onUpdateStyle} />}
+                    </div>
+                </aside>
             </div>
         </div>
     );
@@ -335,7 +320,7 @@ const EditableSlot = React.memo(function EditableSlot({
         }
     }, [commitEditsChange]);
 
-    useEffect(() => { reclamp(); }, [edits.scale, reclamp]);
+    useEffect(() => { reclamp(); }, [edits.scale, edits.offsetX, edits.offsetY, reclamp]);
 
     useEffect(() => {
         const el = innerRef.current;
@@ -501,6 +486,7 @@ const EditableSlot = React.memo(function EditableSlot({
                             src={photo.previewUrl}
                             alt=""
                             fill
+                            unoptimized
                             className="object-cover pointer-events-none"
                             sizes="(max-width: 768px) 100vw, 50vw"
                             draggable={false}
@@ -536,6 +522,9 @@ function TabButton({ active, onClick, icon, label }: {
     return (
         <button
             onClick={onClick}
+            role="tab"
+            aria-selected={active}
+            aria-controls="editor-tool-panel"
             className={`flex-1 flex flex-col items-center justify-center gap-1 py-2.5 text-[11px] font-medium transition-colors
                 ${active ? 'text-blue-400 border-b-2 border-blue-500 bg-slate-700/40' : 'text-slate-400 hover:text-slate-200'}`}
         >
@@ -562,6 +551,8 @@ function LayoutsTab({
                         <button
                             key={template.id}
                             onClick={() => onTemplateSelect(template)}
+                            aria-label={template.name}
+                            aria-pressed={isSelected}
                             className={`relative aspect-square rounded-xl overflow-hidden transition-all duration-150
                                 ${isSelected
                                     ? 'ring-2 ring-blue-500 bg-blue-500/20'
@@ -685,6 +676,7 @@ function SliderRow({
             </div>
             <input
                 type="range"
+                aria-label={label}
                 min={min}
                 max={max}
                 step={step}
@@ -733,12 +725,13 @@ function FiltersTab({
                         <button
                             key={opt.id}
                             onClick={() => onPick(opt.id)}
+                            aria-pressed={isSelected}
                             className={`group flex flex-col items-center gap-1 transition-transform ${isSelected ? 'scale-[1.04]' : ''}`}
                         >
                             <div className={`relative w-full aspect-square rounded-lg overflow-hidden bg-slate-700
                                 ${isSelected ? 'ring-2 ring-blue-500' : 'ring-1 ring-slate-700 group-hover:ring-slate-500'}`}>
                                 <div className="absolute inset-0" style={{ filter: editsToCssFilter(previewEdits) }}>
-                                    <Image src={selectedPhoto.previewUrl} alt={opt.label} fill className="object-cover" sizes="80px" />
+                                    <Image src={selectedPhoto.previewUrl} alt="" fill unoptimized className="object-cover" sizes="80px" />
                                 </div>
                             </div>
                             <span className={`text-[11px] ${isSelected ? 'text-blue-400' : 'text-slate-400'}`}>{opt.label}</span>
@@ -770,6 +763,7 @@ function FormatTab({
                         <button
                             key={preset.id}
                             onClick={() => onSelect(preset.ratio)}
+                            aria-pressed={isSelected}
                             className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left
                                 ${isSelected
                                     ? 'border-blue-500 bg-blue-500/15'
@@ -810,6 +804,8 @@ function StyleTab({
                             <button
                                 key={preset.value}
                                 onClick={() => onUpdate({ background: preset.value })}
+                                aria-label={`${preset.name} background`}
+                                aria-pressed={isSelected}
                                 className={`relative w-9 h-9 rounded-full border-2 transition-all
                                     ${isSelected ? 'border-blue-500 scale-110' : 'border-slate-600 hover:border-slate-400'}`}
                                 style={{ background: preset.value }}
@@ -824,6 +820,7 @@ function StyleTab({
                     <label className="relative w-9 h-9 rounded-full border-2 border-dashed border-slate-500 hover:border-slate-300 flex items-center justify-center cursor-pointer overflow-hidden">
                         <input
                             type="color"
+                            aria-label="Custom background color"
                             value={style.background}
                             onChange={(e) => onUpdate({ background: e.target.value })}
                             className="absolute inset-0 opacity-0 cursor-pointer"

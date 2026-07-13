@@ -10,10 +10,7 @@ import { TEMPLATES, CollageTemplate, getDefaultTemplate, getTemplatesForPhotoCou
 import { saveCollage } from '@/utils/collageGenerator';
 import { PhotoEdits, DEFAULT_EDITS, CollageStyle, DEFAULT_STYLE } from '@/utils/photoEdits';
 
-interface PhotoData {
-  file: File;
-  previewUrl: string;
-}
+import { PhotoData } from '@/types/photo';
 
 type AppPhase = 'home' | 'selection' | 'editor';
 
@@ -55,6 +52,7 @@ export default function Home() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<PhotoData[]>([]);
+  const processingRef = useRef(false);
 
   useEffect(() => {
     photosRef.current = photos;
@@ -78,22 +76,17 @@ export default function Home() {
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileInput = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-
-    const files = Array.from(e.target.files)
+  const processFiles = useCallback(async (incomingFiles: File[]) => {
+    const files = incomingFiles
       .filter((file) => file.type.startsWith('image/'))
       .slice(0, MAX_PHOTOS - photos.length);
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (files.length === 0 || processingRef.current) return;
 
-    if (files.length === 0) return;
+    // Lock synchronously so two file/drop events in the same render cannot race.
+    processingRef.current = true;
 
-    if (phase === 'home') {
-      setPhase('selection');
-    }
+    if (phase === 'home') setPhase('selection');
 
     setIsProcessing(true);
     setProcessingProgress({ current: 0, total: files.length });
@@ -105,35 +98,52 @@ export default function Home() {
     };
 
     try {
-      const newPhotos: PhotoData[] = [];
+      const newPhotos = new Array<PhotoData>(files.length);
+      let nextIndex = 0;
+      let completed = 0;
 
-      for (let i = 0; i < files.length; i++) {
-        setProcessingProgress({ current: i + 1, total: files.length });
+      // Compress a few images at a time. This is faster than a serial loop while
+      // avoiding the memory spike caused by processing nine large photos at once.
+      const workers = Array.from({ length: Math.min(3, files.length) }, async () => {
+        while (nextIndex < files.length) {
+          const index = nextIndex++;
+          const original = files[index];
+          let output = original;
 
-        try {
-          const compressedFile = await imageCompression(files[i], compressionOptions);
-          newPhotos.push({
-            file: compressedFile,
-            previewUrl: URL.createObjectURL(compressedFile),
-          });
-        } catch (error) {
-          console.error('Failed to compress image:', error);
-          newPhotos.push({
-            file: files[i],
-            previewUrl: URL.createObjectURL(files[i]),
-          });
+          try {
+            output = await imageCompression(original, compressionOptions);
+          } catch (error) {
+            console.error('Failed to compress image:', error);
+          }
+
+          newPhotos[index] = {
+            file: output,
+            previewUrl: URL.createObjectURL(output),
+          };
+          completed += 1;
+          setProcessingProgress({ current: completed, total: files.length });
         }
-      }
+      });
 
+      await Promise.all(workers);
       setPhotos((prev) => {
-        const combined = [...prev, ...newPhotos].slice(0, MAX_PHOTOS);
-        return combined;
+        const capacity = Math.max(0, MAX_PHOTOS - prev.length);
+        const accepted = newPhotos.slice(0, capacity);
+        newPhotos.slice(capacity).forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+        return [...prev, ...accepted];
       });
     } finally {
+      processingRef.current = false;
       setIsProcessing(false);
       setProcessingProgress({ current: 0, total: 0 });
     }
   }, [phase, photos.length]);
+
+  const handleFileInput = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = '';
+    await processFiles(files);
+  }, [processFiles]);
 
   const handleRemovePhoto = useCallback((index: number) => {
     setPhotos((prev) => {
@@ -289,6 +299,7 @@ export default function Home() {
           photos={photos}
           maxPhotos={MAX_PHOTOS}
           onAddPhotos={handleSelectPhotos}
+          onDropPhotos={processFiles}
           onRemovePhoto={handleRemovePhoto}
           onGroupIt={handleGroupIt}
           onBack={handleBackToHome}

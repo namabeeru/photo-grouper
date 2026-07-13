@@ -19,14 +19,14 @@
 
 | Layer | Technology | Version |
 |-------|------------|---------|
-| **Framework** | Next.js (App Router) | 16.0.10 |
-| **UI Library** | React | 19.2.1 |
+| **Framework** | Next.js (App Router) | 16.2.10 |
+| **UI Library** | React | 19.2.7 |
 | **Language** | TypeScript | ^5 |
 | **Styling** | Tailwind CSS | ^4 |
 | **Icons** | Lucide React | ^0.561.0 |
 | **Image Compression** | browser-image-compression | ^2.0.2 |
-| **PWA** | next-pwa | ^5.6.0 |
-| **Build Tool** | Turbopack (via Next.js) | - |
+| **PWA** | @ducanh2912/next-pwa | ^10.2.9 |
+| **Build Tool** | Turbopack (development), webpack (production PWA build) | - |
 
 ---
 
@@ -48,6 +48,8 @@ photo-grouper/
 │   ├── templates.ts        # Collage template definitions
 │   ├── photoEdits.ts       # Per-slot edit + filter types and presets
 │   └── collageGenerator.ts # Canvas-based collage rendering
+├── types/
+│   └── photo.ts            # Shared local photo model
 ├── public/                 # Static assets
 │   ├── site.webmanifest    # PWA manifest
 │   ├── apple-touch-icon.png
@@ -78,6 +80,10 @@ The app operates as a **three-phase state machine**:
 | `selection` | `PhotoSelection.tsx` | Photo picker with add/remove functionality |
 | `editor` | `CollageEditor.tsx` | Template selection, photo arrangement, save |
 
+The selection phase accepts both the system file picker and desktop drag-and-drop. The editor
+keeps its touch-first bottom tool tray on small screens and uses a persistent right-side inspector
+on desktop so the canvas and controls remain visible together.
+
 ---
 
 ## Key Features
@@ -85,6 +91,7 @@ The app operates as a **three-phase state machine**:
 ### 1. Image Compression
 - Uses `browser-image-compression` library
 - Settings: `maxSizeMB: 1.5`, `maxWidthOrHeight: 1920`, `useWebWorker: true`
+- Compresses up to three images concurrently to balance speed and memory use
 - Prevents app freeze when handling large images
 
 ### 2. Collage Templates
@@ -148,7 +155,7 @@ The app operates as a **three-phase state machine**:
   `EXPORT_WIDTH / REFERENCE_WIDTH (448)` so output matches preview
 
 ### 7. PWA Support
-- Configured via `next-pwa` in `next.config.ts`
+- Configured via `@ducanh2912/next-pwa` in `next.config.ts`
 - Service worker generated for offline capability
 - Web manifest at `/public/site.webmanifest`
 
@@ -180,7 +187,7 @@ The app operates as a **three-phase state machine**:
 
 ```bash
 npm run dev     # Start dev server (Turbopack)
-npm run build   # Production build
+npm run build   # Production build (webpack, required for service-worker generation)
 npm run start   # Start production server
 npm run lint    # Run ESLint
 ```

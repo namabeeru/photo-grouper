@@ -16,10 +16,7 @@ import {
   clampOffsets,
 } from './photoEdits';
 
-interface PhotoData {
-  file: File;
-  previewUrl: string;
-}
+import { PhotoData } from '@/types/photo';
 
 const EXPORT_WIDTH = 2000;
 // Reference width used in the editor preview (Tailwind max-w-md ≈ 448px).

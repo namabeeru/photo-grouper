@@ -1,83 +1,97 @@
 'use client';
 
-import React from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
+import { ArrowRight, Images, ShieldCheck, Sparkles, WifiOff } from 'lucide-react';
 
 interface HomePageProps {
     onSelectPhotos: () => void;
 }
 
+const benefits = [
+    { icon: ShieldCheck, label: 'Private by design', detail: 'Photos stay on this device' },
+    { icon: WifiOff, label: 'Works offline', detail: 'No connection required' },
+    { icon: Sparkles, label: 'Ready in seconds', detail: 'No account or setup' },
+];
+
 export default function HomePage({ onSelectPhotos }: HomePageProps) {
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
-            {/* Subtle background decoration */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-indigo-100/40 to-purple-100/30 rounded-full blur-3xl" />
-                <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-blue-100/30 to-cyan-100/20 rounded-full blur-3xl" />
-            </div>
+        <main className="relative min-h-dvh overflow-hidden bg-[#f7f8fb] text-slate-950">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.10),transparent_42%)]" />
 
-            {/* Content */}
-            <div className="relative z-10 text-center">
-                {/* Hero Logo */}
-                <div className="mb-6">
-                    <Image
-                        src="/logo.svg"
-                        alt="Photo Grouper"
-                        width={400}
-                        height={400}
-                        className="mx-auto drop-shadow-xl"
-                        priority
-                    />
+            <div className="relative mx-auto flex min-h-dvh w-full max-w-6xl flex-col px-5 py-5 sm:px-8 sm:py-7">
+                <header className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5 text-sm font-semibold tracking-tight text-slate-800">
+                        <Image src="/icon-rounded.svg" alt="" width={32} height={32} priority />
+                        Photo Grouper
+                    </div>
+                    <Link
+                        href="/privacy"
+                        className="rounded-full px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                    >
+                        Privacy
+                    </Link>
+                </header>
+
+                <section className="flex flex-1 items-center py-10 sm:py-14">
+                    <div className="mx-auto grid w-full items-center gap-12 lg:grid-cols-[1.02fr_0.98fr] lg:gap-20">
+                        <div className="max-w-xl text-center lg:text-left">
+                            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/80 px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm shadow-indigo-100/60">
+                                <ShieldCheck className="h-3.5 w-3.5" />
+                                Zero uploads. Every pixel stays local.
+                            </div>
+                            <h1 className="text-balance text-5xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-6xl lg:text-7xl">
+                                Make the group shot fit the moment.
+                            </h1>
+                            <p className="mx-auto mt-6 max-w-lg text-pretty text-lg leading-8 text-slate-600 lg:mx-0">
+                                Turn 2 to 9 photos into a clean, share-ready collage. No account, no cloud, no waiting.
+                            </p>
+                            <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
+                                <button
+                                    onClick={onSelectPhotos}
+                                    className="group inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 px-7 text-base font-semibold text-white shadow-xl shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-indigo-600 hover:shadow-indigo-600/20 sm:w-auto"
+                                >
+                                    <Images className="h-5 w-5" />
+                                    Choose photos
+                                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                                </button>
+                                <span className="text-sm text-slate-400">Free forever</span>
+                            </div>
+                        </div>
+
+                        <div className="relative mx-auto w-full max-w-[520px]" aria-hidden="true">
+                            <div className="absolute -inset-10 rounded-full bg-indigo-200/30 blur-3xl" />
+                            <div className="relative grid aspect-[1.08] grid-cols-2 grid-rows-2 gap-3 rounded-[2rem] border border-white/80 bg-white/75 p-4 shadow-[0_32px_80px_-32px_rgba(30,41,59,0.35)] backdrop-blur-xl sm:gap-4 sm:p-5">
+                                <div className="row-span-2 overflow-hidden rounded-[1.35rem] bg-gradient-to-br from-indigo-500 to-indigo-700 p-5 text-white shadow-inner">
+                                    <div className="flex h-full flex-col justify-between">
+                                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-100">Main moment</span>
+                                        <div>
+                                            <div className="mb-3 h-12 w-12 rounded-full bg-white/15" />
+                                            <p className="text-2xl font-semibold tracking-tight">Together looks better.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="rounded-[1.35rem] bg-gradient-to-br from-amber-200 to-orange-400" />
+                                <div className="rounded-[1.35rem] bg-gradient-to-br from-violet-200 to-fuchsia-400" />
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <div className="grid gap-3 border-t border-slate-200/80 pt-5 sm:grid-cols-3">
+                    {benefits.map(({ icon: Icon, label, detail }) => (
+                        <div key={label} className="flex items-center gap-3 rounded-2xl px-2 py-2">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200/70">
+                                <Icon className="h-4 w-4" />
+                            </span>
+                            <span>
+                                <span className="block text-sm font-semibold text-slate-800">{label}</span>
+                                <span className="block text-xs text-slate-500">{detail}</span>
+                            </span>
+                        </div>
+                    ))}
                 </div>
-
-                {/* App Name */}
-                <h1 className="text-4xl font-bold bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 bg-clip-text text-transparent mb-3 tracking-tight">
-                    Photo Grouper
-                </h1>
-
-                {/* Privacy Tagline */}
-                <p className="text-slate-500 text-lg max-w-xs mx-auto leading-relaxed mb-10">
-                    Your photos, your device.
-                    <br />
-                    <span className="text-slate-400">Zero cloud uploads. Ever.</span>
-                </p>
-
-                {/* Main CTA Button - Refined gradient */}
-                <button
-                    onClick={onSelectPhotos}
-                    className="group relative px-8 py-4 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 text-white font-semibold text-lg rounded-2xl shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-purple-500/30 transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0 active:shadow-md"
-                >
-                    <span className="flex items-center gap-3">
-                        <svg
-                            className="w-5 h-5 opacity-90"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                        >
-                            <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                            />
-                        </svg>
-                        Select Photos
-                    </span>
-                </button>
-
-                {/* Feature badges - Refined */}
-                <div className="mt-10 flex flex-wrap gap-2 justify-center">
-                    <span className="px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full text-xs font-medium text-slate-600 shadow-sm border border-slate-100">
-                        🔒 100% Private
-                    </span>
-                    <span className="px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full text-xs font-medium text-slate-600 shadow-sm border border-slate-100">
-                        📱 Works Offline
-                    </span>
-                    <span className="px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full text-xs font-medium text-slate-600 shadow-sm border border-slate-100">
-                        ⚡ Instant Collages
-                    </span>
-                </div>
             </div>
-        </div>
+        </main>
     );
 }
