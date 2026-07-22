@@ -15,11 +15,54 @@ import {
   editsToCssFilter,
   clampOffsets,
   effectivePhotoScale,
+  basePhotoDimensions,
 } from './photoEdits';
 
 import { PhotoData } from '@/types/photo';
 
-const EXPORT_WIDTH = 2000;
+export type ExportFormat = 'jpeg' | 'png';
+
+export interface ExportOptions {
+  format: ExportFormat;
+  width: number;
+}
+
+export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
+  format: 'jpeg',
+  width: 2000,
+};
+
+export interface ComparisonLabels {
+  enabled: boolean;
+  left: string;
+  right: string;
+}
+
+export const DEFAULT_COMPARISON_LABELS: ComparisonLabels = {
+  enabled: false,
+  left: 'Before',
+  right: 'After',
+};
+
+export type SaveResult = 'shared' | 'downloaded';
+
+export function getExportDimensions(aspect: number, width: number) {
+  const longestEdge = Math.max(320, Math.min(4000, Math.round(width)));
+  if (aspect >= 1) {
+    return { width: longestEdge, height: Math.round(longestEdge / aspect) };
+  }
+  return { width: Math.round(longestEdge * aspect), height: longestEdge };
+}
+
+export function getExportFileDetails(format: ExportFormat) {
+  const extension = format === 'png' ? 'png' : 'jpg';
+  return {
+    mimeType: format === 'png' ? 'image/png' : 'image/jpeg',
+    extension,
+    fileName: `photo-collage.${extension}`,
+  };
+}
+
 // Reference width used in the editor preview (Tailwind max-w-md ≈ 448px).
 // Style values (gap, padding, radius) are scaled by EXPORT_WIDTH / REFERENCE_WIDTH.
 const REFERENCE_WIDTH = 448;
@@ -33,29 +76,6 @@ const loadImage = (url: string): Promise<HTMLImageElement> => {
     img.src = url;
   });
 };
-
-/**
- * Load every distinct photo URL once, in parallel. Returns a lookup the
- * renderer can read synchronously.
- */
-async function preloadImages(urls: string[]): Promise<Map<string, HTMLImageElement>> {
-  const unique = Array.from(new Set(urls));
-  const entries = await Promise.all(
-    unique.map(async (url): Promise<[string, HTMLImageElement] | null> => {
-      try {
-        return [url, await loadImage(url)];
-      } catch (e) {
-        console.error('Failed to load image:', e);
-        return null;
-      }
-    })
-  );
-  const map = new Map<string, HTMLImageElement>();
-  for (const entry of entries) {
-    if (entry) map.set(entry[0], entry[1]);
-  }
-  return map;
-}
 
 function pathRoundedRect(
   ctx: CanvasRenderingContext2D,
@@ -103,10 +123,9 @@ function drawSlot(
   const ih = img.height;
   const imgAspect = iw / ih;
 
-  // Cover sizing for the image at the slot rect.
-  const scale = Math.max(w / iw, h / ih);
-  const nw = iw * scale;
-  const nh = ih * scale;
+  const base = basePhotoDimensions(imgAspect, w, h, edits.fitMode);
+  const nw = base.width;
+  const nh = base.height;
 
   // Clamp offsets to the same bounds used in the editor.
   const { offsetX, offsetY } = clampOffsets(edits, imgAspect, w, h);
@@ -122,6 +141,61 @@ function drawSlot(
   ctx.restore();
 }
 
+export function fitTextToWidth(
+  text: string,
+  maxWidth: number,
+  measure: (value: string) => number,
+): string {
+  if (measure(text) <= maxWidth) return text;
+  const ellipsis = '…';
+  let end = text.length;
+  while (end > 0) {
+    const candidate = `${text.slice(0, end).trimEnd()}${ellipsis}`;
+    if (measure(candidate) <= maxWidth) return candidate;
+    end -= 1;
+  }
+  return measure(ellipsis) <= maxWidth ? ellipsis : '';
+}
+
+function drawComparisonLabel(
+  ctx: CanvasRenderingContext2D,
+  label: string,
+  x: number,
+  y: number,
+  w: number,
+  pxScale: number,
+) {
+  const rawText = label.trim().slice(0, 24);
+  if (!rawText) return;
+  const fontSize = Math.max(8, Math.round(11 * pxScale));
+  const horizontalPadding = Math.round(10 * pxScale);
+  const height = Math.max(18, Math.round(24 * pxScale));
+  const availablePillWidth = Math.max(0, w - horizontalPadding * 2);
+  ctx.save();
+  ctx.font = `600 ${fontSize}px sans-serif`;
+  ctx.textBaseline = 'middle';
+  const text = fitTextToWidth(
+    rawText,
+    Math.max(0, availablePillWidth - horizontalPadding * 2),
+    (value) => ctx.measureText(value).width,
+  );
+  if (!text) {
+    ctx.restore();
+    return;
+  }
+  const pillWidth = Math.min(availablePillWidth, ctx.measureText(text).width + horizontalPadding * 2);
+  const pillX = x + (w - pillWidth) / 2;
+  const pillY = y + Math.round(12 * pxScale);
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.78)';
+  ctx.beginPath();
+  pathRoundedRect(ctx, pillX, pillY, pillWidth, height, height / 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, x + w / 2, pillY + height / 2 + 1);
+  ctx.restore();
+}
+
 /**
  * Generate the final collage image as an object URL.
  */
@@ -131,10 +205,11 @@ export async function generateCollage(
   slotEdits: Map<string, PhotoEdits> = new Map(),
   collageStyle: CollageStyle = DEFAULT_STYLE,
   outputAspectRatio: number | null = null,
+  exportOptions: ExportOptions = DEFAULT_EXPORT_OPTIONS,
+  comparisonLabels: ComparisonLabels = DEFAULT_COMPARISON_LABELS,
 ): Promise<string> {
   const aspect = outputAspectRatio ?? template.aspectRatio;
-  const canvasWidth = EXPORT_WIDTH;
-  const canvasHeight = Math.round(EXPORT_WIDTH / aspect);
+  const { width: canvasWidth, height: canvasHeight } = getExportDimensions(aspect, exportOptions.width);
 
   const pxScale = canvasWidth / REFERENCE_WIDTH;
   const gapPx = collageStyle.gap * pxScale;
@@ -152,20 +227,12 @@ export async function generateCollage(
   ctx.fillStyle = collageStyle.background || '#ffffff';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  // Preload all photos in parallel before drawing.
-  const urls: string[] = [];
-  for (const slot of template.slots) {
-    const photo = photos.get(slot.id);
-    if (photo) urls.push(photo.previewUrl);
-  }
-  const imageCache = await preloadImages(urls);
-
   const innerX = paddingPx;
   const innerY = paddingPx;
   const innerW = canvasWidth - paddingPx * 2;
   const innerH = canvasHeight - paddingPx * 2;
 
-  for (const slot of template.slots) {
+  for (const [slotIndex, slot] of template.slots.entries()) {
     const photo = photos.get(slot.id);
     if (!photo) continue;
 
@@ -177,12 +244,23 @@ export async function generateCollage(
     const sh = (slot.height / 100) * innerH - gapPx;
     if (sw <= 0 || sh <= 0) continue;
 
-    const img = imageCache.get(photo.previewUrl);
-    if (img) {
+    try {
+      const img = await loadImage(photo.previewUrl);
       drawSlot(ctx, img, sx, sy, sw, sh, edits, cornerPx);
-    } else {
+    } catch (error) {
+      console.error('Failed to load image:', error);
       ctx.fillStyle = '#e2e8f0';
       ctx.fillRect(sx, sy, sw, sh);
+    }
+    if (comparisonLabels.enabled && slotIndex < 2) {
+      drawComparisonLabel(
+        ctx,
+        slotIndex === 0 ? comparisonLabels.left : comparisonLabels.right,
+        sx,
+        sy,
+        sw,
+        pxScale,
+      );
     }
   }
 
@@ -193,7 +271,7 @@ export async function generateCollage(
       } else {
         reject(new Error('Canvas to Blob failed'));
       }
-    }, 'image/jpeg', 0.92);
+    }, getExportFileDetails(exportOptions.format).mimeType, exportOptions.format === 'jpeg' ? 0.92 : undefined);
   });
 }
 
@@ -206,18 +284,29 @@ export async function saveCollage(
   slotEdits: Map<string, PhotoEdits> = new Map(),
   collageStyle: CollageStyle = DEFAULT_STYLE,
   outputAspectRatio: number | null = null,
-): Promise<void> {
-  const url = await generateCollage(template, photos, slotEdits, collageStyle, outputAspectRatio);
+  exportOptions: ExportOptions = DEFAULT_EXPORT_OPTIONS,
+  comparisonLabels: ComparisonLabels = DEFAULT_COMPARISON_LABELS,
+): Promise<SaveResult> {
+  const url = await generateCollage(
+    template,
+    photos,
+    slotEdits,
+    collageStyle,
+    outputAspectRatio,
+    exportOptions,
+    comparisonLabels,
+  );
+  const fileDetails = getExportFileDetails(exportOptions.format);
 
   if (navigator.share && navigator.canShare) {
     try {
       const response = await fetch(url);
       const blob = await response.blob();
-      const file = new File([blob], 'photo-collage.jpg', { type: 'image/jpeg' });
+      const file = new File([blob], fileDetails.fileName, { type: fileDetails.mimeType });
       if (navigator.canShare({ files: [file] })) {
         await navigator.share({ files: [file], title: 'Photo Collage' });
         URL.revokeObjectURL(url);
-        return;
+        return 'shared';
       }
     } catch (error) {
       console.warn('Share failed, falling back to download:', error);
@@ -226,9 +315,10 @@ export async function saveCollage(
 
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'photo-collage.jpg';
+  link.download = fileDetails.fileName;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  return 'downloaded';
 }

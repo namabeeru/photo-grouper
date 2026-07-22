@@ -19,7 +19,7 @@ export default function PrivacyPage() {
       </Link>
 
       <h1 className="mt-8 text-3xl font-bold text-slate-900">Privacy Policy</h1>
-      <p className="mt-2 text-sm text-slate-500">Effective date: June 15, 2026</p>
+      <p className="mt-2 text-sm text-slate-500">Effective date: July 22, 2026</p>
 
       <p className="mt-6">
         Photo Grouper is built privacy-first. This policy explains, in plain
@@ -94,11 +94,13 @@ export default function PrivacyPage() {
       </p>
       <ul className="mt-3 list-disc space-y-2 pl-5">
         <li>
-          <strong>Vercel Web Analytics</strong> — anonymous, aggregated usage
-          data such as page views and general device, browser, and
-          country-level information. It does not use tracking cookies, does not
-          follow you across other sites, does not collect your photos, and does
-          not identify you personally.
+          <strong>Vercel Web Analytics and product events</strong> — anonymous,
+          aggregated usage data such as page views, workflow route, number of
+          photos used, export format and size, export success, and an optional
+          post-export category you choose. These events do not include
+          filenames, labels, image dimensions, image URLs, photo contents, or
+          generated collages. Analytics does not use tracking cookies, follow
+          you across other sites, or identify you personally.
         </li>
         <li>
           <strong>Standard server logs</strong> — our hosting provider (Vercel)

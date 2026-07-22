@@ -18,7 +18,10 @@ export type FilterId =
     | 'lush'
     | 'matte';
 
+export type FitMode = 'cover' | 'contain';
+
 export interface PhotoEdits {
+    fitMode: FitMode;
     rotation: number;    // degrees, -180 .. 180 (image content rotation)
     scale: number;       // 1.0 .. 3.0 (zoom inside slot)
     offsetX: number;     // -50 .. 50 (% of slot width)
@@ -31,6 +34,7 @@ export interface PhotoEdits {
 }
 
 export const DEFAULT_EDITS: PhotoEdits = {
+    fitMode: 'cover',
     rotation: 0,
     scale: 1,
     offsetX: 0,
@@ -90,8 +94,19 @@ export function normalizeRotation(rotation: number): number {
     return normalized === -180 && rotation > 0 ? 180 : normalized;
 }
 
-function coverDimensions(imgAspect: number, slotW: number, slotH: number) {
+export function basePhotoDimensions(
+    imgAspect: number,
+    slotW: number,
+    slotH: number,
+    fitMode: FitMode = 'cover',
+) {
     const slotAspect = slotW / slotH;
+    if (fitMode === 'contain') {
+        if (imgAspect >= slotAspect) {
+            return { width: slotW, height: slotW / imgAspect };
+        }
+        return { width: slotH * imgAspect, height: slotH };
+    }
     if (imgAspect >= slotAspect) {
         return { width: slotH * imgAspect, height: slotH };
     }
@@ -106,7 +121,7 @@ export function rotationCoverScale(
     rotation: number,
 ): number {
     if (!imgAspect || !isFinite(imgAspect) || slotW <= 0 || slotH <= 0) return 1;
-    const base = coverDimensions(imgAspect, slotW, slotH);
+    const base = basePhotoDimensions(imgAspect, slotW, slotH, 'cover');
     const radians = (normalizeRotation(rotation) * Math.PI) / 180;
     const c = Math.abs(Math.cos(radians));
     const s = Math.abs(Math.sin(radians));
@@ -117,13 +132,32 @@ export function rotationCoverScale(
     );
 }
 
+export function rotationContainScale(
+    imgAspect: number,
+    slotW: number,
+    slotH: number,
+    rotation: number,
+): number {
+    if (!imgAspect || !isFinite(imgAspect) || slotW <= 0 || slotH <= 0) return 1;
+    const base = basePhotoDimensions(imgAspect, slotW, slotH, 'contain');
+    const radians = (normalizeRotation(rotation) * Math.PI) / 180;
+    const c = Math.abs(Math.cos(radians));
+    const s = Math.abs(Math.sin(radians));
+    const rotatedW = c * base.width + s * base.height;
+    const rotatedH = s * base.width + c * base.height;
+    return Math.min(1, slotW / rotatedW, slotH / rotatedH);
+}
+
 export function effectivePhotoScale(
     edits: PhotoEdits,
     imgAspect: number,
     slotW: number,
     slotH: number,
 ): number {
-    return edits.scale * rotationCoverScale(imgAspect, slotW, slotH, edits.rotation);
+    const rotationScale = edits.fitMode === 'contain'
+        ? rotationContainScale(imgAspect, slotW, slotH, edits.rotation)
+        : rotationCoverScale(imgAspect, slotW, slotH, edits.rotation);
+    return edits.scale * rotationScale;
 }
 
 /**
@@ -141,18 +175,33 @@ export function maxOffsetPct(
     slotH: number,
     scale: number,
     rotation = 0,
+    fitMode: FitMode = 'cover',
 ): { x: number; y: number } {
     if (!imgAspect || !isFinite(imgAspect) || slotW <= 0 || slotH <= 0) {
         return { x: 0, y: 0 };
     }
 
-    const base = coverDimensions(imgAspect, slotW, slotH);
-    const coverScale = rotationCoverScale(imgAspect, slotW, slotH, rotation);
-    const renderedW = base.width * scale * coverScale;
-    const renderedH = base.height * scale * coverScale;
     const radians = (normalizeRotation(rotation) * Math.PI) / 180;
     const c = Math.abs(Math.cos(radians));
     const s = Math.abs(Math.sin(radians));
+
+    if (fitMode === 'contain') {
+        const base = basePhotoDimensions(imgAspect, slotW, slotH, 'contain');
+        const containScale = scale * rotationContainScale(imgAspect, slotW, slotH, rotation);
+        const renderedW = base.width * containScale;
+        const renderedH = base.height * containScale;
+        const boundsW = c * renderedW + s * renderedH;
+        const boundsH = s * renderedW + c * renderedH;
+        return {
+            x: (Math.abs(slotW - boundsW) / 2 / slotW) * 100,
+            y: (Math.abs(slotH - boundsH) / 2 / slotH) * 100,
+        };
+    }
+
+    const base = basePhotoDimensions(imgAspect, slotW, slotH, 'cover');
+    const coverScale = rotationCoverScale(imgAspect, slotW, slotH, rotation);
+    const renderedW = base.width * scale * coverScale;
+    const renderedH = base.height * scale * coverScale;
 
     // At 0°/180°, preserve the full independent pan range.
     if (s < 1e-8) {
@@ -179,7 +228,7 @@ export function clampOffsets(
     slotW: number,
     slotH: number,
 ): { offsetX: number; offsetY: number } {
-    const m = maxOffsetPct(imgAspect, slotW, slotH, edits.scale, edits.rotation);
+    const m = maxOffsetPct(imgAspect, slotW, slotH, edits.scale, edits.rotation, edits.fitMode);
     return {
         offsetX: clampNum(edits.offsetX, -m.x, m.x),
         offsetY: clampNum(edits.offsetY, -m.y, m.y),

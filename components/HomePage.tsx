@@ -3,9 +3,11 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowRight, Images, ShieldCheck, Sparkles, WifiOff } from 'lucide-react';
+import type { WorkflowConfig } from '@/utils/workflows';
 
 interface HomePageProps {
     onSelectPhotos: () => void;
+    workflow: WorkflowConfig;
 }
 
 const benefits = [
@@ -14,7 +16,7 @@ const benefits = [
     { icon: Sparkles, label: 'Ready in seconds', detail: 'No account or setup' },
 ];
 
-export default function HomePage({ onSelectPhotos }: HomePageProps) {
+export default function HomePage({ onSelectPhotos, workflow }: HomePageProps) {
     return (
         <main className="relative min-h-dvh overflow-hidden bg-[#f7f8fb] text-slate-950">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(99,102,241,0.10),transparent_42%)]" />
@@ -38,13 +40,13 @@ export default function HomePage({ onSelectPhotos }: HomePageProps) {
                         <div className="max-w-xl text-center lg:text-left">
                             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-indigo-100 bg-white/80 px-3 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm shadow-indigo-100/60">
                                 <ShieldCheck className="h-3.5 w-3.5" />
-                                Zero uploads. Every pixel stays local.
+                                {workflow.eyebrow}
                             </div>
                             <h1 className="text-balance text-5xl font-semibold tracking-[-0.045em] text-slate-950 sm:text-6xl lg:text-7xl">
-                                Make the group shot fit the moment.
+                                {workflow.title}
                             </h1>
                             <p className="mx-auto mt-6 max-w-lg text-pretty text-lg leading-8 text-slate-600 lg:mx-0">
-                                Turn 2 to 9 photos into a clean, share-ready collage. No account, no cloud, no waiting.
+                                {workflow.description}
                             </p>
                             <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
                                 <button
@@ -52,10 +54,10 @@ export default function HomePage({ onSelectPhotos }: HomePageProps) {
                                     className="group inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-slate-950 px-7 text-base font-semibold text-white shadow-xl shadow-slate-950/15 transition hover:-translate-y-0.5 hover:bg-indigo-600 hover:shadow-indigo-600/20 sm:w-auto"
                                 >
                                     <Images className="h-5 w-5" />
-                                    Choose photos
+                                    {workflow.photoCount ? `Choose ${workflow.photoCount} photos` : 'Choose photos'}
                                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                                 </button>
-                                <span className="text-sm text-slate-400">Free forever</span>
+                                <span className="text-sm text-slate-400">Free to create · No watermark</span>
                             </div>
                         </div>
 

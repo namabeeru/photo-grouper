@@ -8,7 +8,7 @@
     "build": "npm run prepare:compression-worker && next build --webpack && npm run verify:pwa",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx scripts/photo-edits.test.mjs",
+    "test": "tsx scripts/photo-edits.test.mjs && tsx scripts/product-features.test.mjs",
     "prepare:compression-worker": "node scripts/prepare-compression-worker.mjs",
     "verify:pwa": "node scripts/verify-pwa.mjs"
   },
@@ -17,7 +17,7 @@
     "@vercel/analytics": "2.0.1",
     "browser-image-compression": "2.0.2",
     "lucide-react": "0.561.0",
-    "next": "16.2.10",
+    "next": "16.2.11",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },

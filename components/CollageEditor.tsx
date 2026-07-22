@@ -16,6 +16,7 @@ import {
     FilterId,
     editsToCssFilter,
     effectivePhotoScale,
+    basePhotoDimensions,
     normalizeRotation,
     clampOffsets,
     maxOffsetPct,
@@ -25,6 +26,7 @@ import {
 } from '@/utils/photoEdits';
 
 import { PhotoData } from '@/types/photo';
+import type { ComparisonLabels, ExportOptions } from '@/utils/collageGenerator';
 
 interface CollageEditorProps {
     photos: PhotoData[];
@@ -35,6 +37,8 @@ interface CollageEditorProps {
     slotEdits: Map<string, PhotoEdits>;
     collageStyle: CollageStyle;
     outputAspectRatio: number | null;
+    exportOptions: ExportOptions;
+    comparisonLabels: ComparisonLabels;
     isSaving: boolean;
     onTemplateSelect: (template: CollageTemplate) => void;
     onSlotClick: (slotId: string) => void;
@@ -44,6 +48,8 @@ interface CollageEditorProps {
     onApplyEditToAll: (updates: Partial<PhotoEdits>) => void;
     onUpdateStyle: (updates: Partial<CollageStyle>) => void;
     onSetAspectRatio: (ratio: number | null) => void;
+    onUpdateExportOptions: (updates: Partial<ExportOptions>) => void;
+    onUpdateComparisonLabels: (updates: Partial<ComparisonLabels>) => void;
     onSave: () => void;
     onCancel: () => void;
 }
@@ -61,6 +67,8 @@ export default function CollageEditor({
     slotEdits,
     collageStyle,
     outputAspectRatio,
+    exportOptions,
+    comparisonLabels,
     isSaving,
     onTemplateSelect,
     onSlotClick,
@@ -70,6 +78,8 @@ export default function CollageEditor({
     onApplyEditToAll,
     onUpdateStyle,
     onSetAspectRatio,
+    onUpdateExportOptions,
+    onUpdateComparisonLabels,
     onSave,
     onCancel,
 }: CollageEditorProps) {
@@ -216,6 +226,10 @@ export default function CollageEditor({
                                         isSelected={isSelected}
                                         isSwapSource={swapSource === slot.id}
                                         swapArmed={!!swapSource && swapSource !== slot.id}
+                                        comparisonLabel={comparisonLabels.enabled && slotIndex < 2
+                                            ? (slotIndex === 0 ? comparisonLabels.left : comparisonLabels.right)
+                                            : null}
+                                        slotBackground={collageStyle.background}
                                         cornerRadius={collageStyle.cornerRadius * styleScale}
                                         halfGap={(collageStyle.gap * styleScale) / 2}
                                         onTap={handleTap}
@@ -253,6 +267,7 @@ export default function CollageEditor({
                                 onUpdate={(updates) => selectedSlot && onUpdateSlotEdits(selectedSlot, updates)}
                                 onReset={() => selectedSlot && onResetSlotEdits(selectedSlot)}
                                 onArmSwap={armSwapFromButton}
+                                onApplyFitAll={(fitMode) => onApplyEditToAll({ fitMode, scale: 1, offsetX: 0, offsetY: 0 })}
                             />
                         )}
                         {tab === 'filters' && (
@@ -264,7 +279,16 @@ export default function CollageEditor({
                                 onApplyAll={(filter) => onApplyEditToAll({ filter })}
                             />
                         )}
-                        {tab === 'format' && <FormatTab activeRatio={outputAspectRatio} onSelect={onSetAspectRatio} />}
+                        {tab === 'format' && (
+                            <FormatTab
+                                activeRatio={outputAspectRatio}
+                                onSelect={onSetAspectRatio}
+                                exportOptions={exportOptions}
+                                onUpdateExportOptions={onUpdateExportOptions}
+                                comparisonLabels={comparisonLabels}
+                                onUpdateComparisonLabels={onUpdateComparisonLabels}
+                            />
+                        )}
                         {tab === 'style' && <StyleTab style={collageStyle} onUpdate={onUpdateStyle} />}
                     </div>
                 </aside>
@@ -287,6 +311,8 @@ interface EditableSlotProps {
     isSelected: boolean;
     isSwapSource: boolean;
     swapArmed: boolean; // some OTHER slot is armed → this slot is a swap target
+    comparisonLabel: string | null;
+    slotBackground: string;
     cornerRadius: number;
     halfGap: number;
     onTap: (slotId: string) => void;
@@ -296,7 +322,7 @@ interface EditableSlotProps {
 
 const EditableSlot = React.memo(function EditableSlot({
     slot, slotNumber, photo, edits, isSelected, isSwapSource, swapArmed,
-    cornerRadius, halfGap,
+    comparisonLabel, slotBackground, cornerRadius, halfGap,
     onTap, onLongPress, onEditsChange,
 }: EditableSlotProps) {
     const innerRef = useRef<HTMLDivElement>(null);
@@ -334,7 +360,7 @@ const EditableSlot = React.memo(function EditableSlot({
     const getPannedOffsets = useCallback((e: PhotoEdits, dxPx: number, dyPx: number, scale = e.scale) => {
         const rect = innerRef.current?.getBoundingClientRect();
         if (!rect || rect.width === 0 || rect.height === 0) return null;
-        const m = maxOffsetPct(imgAspectRef.current, rect.width, rect.height, scale, e.rotation);
+        const m = maxOffsetPct(imgAspectRef.current, rect.width, rect.height, scale, e.rotation, e.fitMode);
         return {
             offsetX: Math.max(-m.x, Math.min(m.x, e.offsetX + (dxPx / rect.width) * 100)),
             offsetY: Math.max(-m.y, Math.min(m.y, e.offsetY + (dyPx / rect.height) * 100)),
@@ -482,9 +508,11 @@ const EditableSlot = React.memo(function EditableSlot({
     };
 
     const hasGeometry = imgAspect > 0 && slotSize.width > 0 && slotSize.height > 0;
-    const imageIsWider = hasGeometry && imgAspect >= slotSize.width / slotSize.height;
-    const baseWidth = imageIsWider ? slotSize.height * imgAspect : slotSize.width;
-    const baseHeight = imageIsWider ? slotSize.height : slotSize.width / imgAspect;
+    const base = hasGeometry
+        ? basePhotoDimensions(imgAspect, slotSize.width, slotSize.height, edits.fitMode)
+        : { width: 0, height: 0 };
+    const baseWidth = base.width;
+    const baseHeight = base.height;
     const displayScale = hasGeometry
         ? effectivePhotoScale(edits, imgAspect, slotSize.width, slotSize.height)
         : edits.scale;
@@ -528,6 +556,7 @@ const EditableSlot = React.memo(function EditableSlot({
                     ${swapArmed ? 'ring-2 ring-amber-300/60' : ''}`}
                 style={{
                     borderRadius: cornerRadius,
+                    background: slotBackground,
                     touchAction: 'none',
                     WebkitUserSelect: 'none',
                 }}
@@ -568,12 +597,18 @@ const EditableSlot = React.memo(function EditableSlot({
                         alt=""
                         fill
                         unoptimized
-                        className="pointer-events-none object-cover"
+                        className={`pointer-events-none ${edits.fitMode === 'contain' ? 'object-contain' : 'object-cover'}`}
                         sizes="(max-width: 768px) 100vw, 50vw"
                         draggable={false}
                         onLoad={handleImageLoad}
                     />
                 )) : null}
+
+                {comparisonLabel?.trim() && (
+                    <span className="pointer-events-none absolute left-1/2 top-3 max-w-[calc(100%-1rem)] -translate-x-1/2 truncate rounded-full bg-slate-950/80 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg backdrop-blur-sm">
+                        {comparisonLabel.trim().slice(0, 24)}
+                    </span>
+                )}
 
                 {/* Swap-target hint badge */}
                 {swapArmed && photo && (
@@ -659,13 +694,14 @@ function LayoutsTab({
 }
 
 function AdjustTab({
-    selectedSlot, edits, onUpdate, onReset, onArmSwap,
+    selectedSlot, edits, onUpdate, onReset, onArmSwap, onApplyFitAll,
 }: {
     selectedSlot: string | null;
     edits: PhotoEdits;
     onUpdate: (updates: Partial<PhotoEdits>) => void;
     onReset: () => void;
     onArmSwap: () => void;
+    onApplyFitAll: (fitMode: PhotoEdits['fitMode']) => void;
 }) {
     if (!selectedSlot) {
         return (
@@ -681,6 +717,34 @@ function AdjustTab({
 
     return (
         <div className="px-4 py-3 space-y-4">
+            <div>
+                <div className="mb-2 flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-wide text-slate-400">Photo fit</p>
+                    <button
+                        onClick={() => onApplyFitAll(edits.fitMode)}
+                        className="text-xs font-medium text-blue-400 hover:text-blue-300"
+                    >
+                        Apply to all
+                    </button>
+                </div>
+                <div className="grid grid-cols-2 rounded-xl bg-slate-800 p-1" role="group" aria-label="Photo fit">
+                    {([
+                        { id: 'cover' as const, label: 'Fill', detail: 'Fill the frame' },
+                        { id: 'contain' as const, label: 'Fit', detail: 'Show full photo' },
+                    ]).map((option) => (
+                        <button
+                            key={option.id}
+                            onClick={() => onUpdate({ fitMode: option.id, scale: 1, offsetX: 0, offsetY: 0 })}
+                            aria-pressed={edits.fitMode === option.id}
+                            className={`rounded-lg px-3 py-2 text-left transition ${edits.fitMode === option.id ? 'bg-slate-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                        >
+                            <span className="block text-sm font-semibold">{option.label}</span>
+                            <span className="block text-[10px]">{option.detail}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
             <div className="flex flex-wrap gap-2">
                 <QuickButton onClick={() => onUpdate({ rotation: normalizeRotation(edits.rotation - ROT_STEP) })} icon={<RotateCcw className="w-4 h-4" />} label="Rotate L" />
                 <QuickButton onClick={() => onUpdate({ rotation: normalizeRotation(edits.rotation + ROT_STEP) })} icon={<RotateCw className="w-4 h-4" />} label="Rotate R" />
@@ -820,44 +884,116 @@ function FiltersTab({
 }
 
 function FormatTab({
-    activeRatio, onSelect,
+    activeRatio, onSelect, exportOptions, onUpdateExportOptions, comparisonLabels, onUpdateComparisonLabels,
 }: {
     activeRatio: number | null;
     onSelect: (ratio: number | null) => void;
+    exportOptions: ExportOptions;
+    onUpdateExportOptions: (updates: Partial<ExportOptions>) => void;
+    comparisonLabels: ComparisonLabels;
+    onUpdateComparisonLabels: (updates: Partial<ComparisonLabels>) => void;
 }) {
     return (
-        <div className="px-4 py-3">
-            <p className="text-xs text-slate-400 uppercase tracking-wide mb-3">Aspect Ratio</p>
-            <div className="grid grid-cols-2 gap-2.5">
-                {ASPECT_PRESETS.map((preset) => {
-                    const isSelected = (preset.ratio ?? null) === activeRatio ||
-                        (preset.ratio !== null && activeRatio !== null && Math.abs(preset.ratio - activeRatio) < 0.001);
-                    const r = preset.ratio ?? 1;
-                    const boxW = r >= 1 ? 34 : 34 * r;
-                    const boxH = r >= 1 ? 34 / r : 34;
-                    return (
+        <div className="space-y-6 px-4 py-3">
+            <div>
+                <p className="mb-3 text-xs uppercase tracking-wide text-slate-400">Aspect ratio</p>
+                <div className="grid grid-cols-2 gap-2.5">
+                    {ASPECT_PRESETS.map((preset) => {
+                        const isSelected = (preset.ratio ?? null) === activeRatio ||
+                            (preset.ratio !== null && activeRatio !== null && Math.abs(preset.ratio - activeRatio) < 0.001);
+                        const r = preset.ratio ?? 1;
+                        const boxW = r >= 1 ? 34 : 34 * r;
+                        const boxH = r >= 1 ? 34 / r : 34;
+                        return (
+                            <button
+                                key={preset.id}
+                                onClick={() => onSelect(preset.ratio)}
+                                aria-pressed={isSelected}
+                                className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all
+                                    ${isSelected
+                                        ? 'border-blue-500 bg-blue-500/15'
+                                        : 'border-slate-700 bg-slate-700/40 hover:border-slate-500'}`}
+                            >
+                                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center">
+                                    <span
+                                        className={`block rounded-[3px] ${isSelected ? 'bg-blue-400' : 'bg-slate-400'}`}
+                                        style={{ width: boxW, height: boxH }}
+                                    />
+                                </span>
+                                <span className="min-w-0">
+                                    <span className={`block text-sm font-semibold ${isSelected ? 'text-blue-300' : 'text-slate-200'}`}>{preset.label}</span>
+                                    <span className="block truncate text-[11px] text-slate-400">{preset.platform}</span>
+                                </span>
+                            </button>
+                        );
+                    })}
+                </div>
+            </div>
+
+            <div>
+                <p className="mb-2 text-xs uppercase tracking-wide text-slate-400">Export</p>
+                <div className="grid grid-cols-2 gap-2">
+                    {(['jpeg', 'png'] as const).map((format) => (
                         <button
-                            key={preset.id}
-                            onClick={() => onSelect(preset.ratio)}
-                            aria-pressed={isSelected}
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left
-                                ${isSelected
-                                    ? 'border-blue-500 bg-blue-500/15'
-                                    : 'border-slate-700 bg-slate-700/40 hover:border-slate-500'}`}
+                            key={format}
+                            onClick={() => onUpdateExportOptions({ format })}
+                            aria-pressed={exportOptions.format === format}
+                            className={`rounded-xl border px-3 py-2.5 text-sm font-semibold uppercase transition ${exportOptions.format === format ? 'border-blue-500 bg-blue-500/15 text-blue-300' : 'border-slate-700 bg-slate-800 text-slate-300 hover:border-slate-500'}`}
                         >
-                            <span className="flex items-center justify-center w-9 h-9 flex-shrink-0">
-                                <span
-                                    className={`block rounded-[3px] ${isSelected ? 'bg-blue-400' : 'bg-slate-400'}`}
-                                    style={{ width: boxW, height: boxH }}
-                                />
-                            </span>
-                            <span className="min-w-0">
-                                <span className={`block text-sm font-semibold ${isSelected ? 'text-blue-300' : 'text-slate-200'}`}>{preset.label}</span>
-                                <span className="block text-[11px] text-slate-400 truncate">{preset.platform}</span>
-                            </span>
+                            {format === 'jpeg' ? 'JPG' : 'PNG'}
                         </button>
-                    );
-                })}
+                    ))}
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2" role="group" aria-label="Export width">
+                    {[1080, 2000, 4000].map((width) => (
+                        <button
+                            key={width}
+                            onClick={() => onUpdateExportOptions({ width })}
+                            aria-pressed={exportOptions.width === width}
+                            className={`rounded-xl border px-2 py-2 text-xs font-medium transition ${exportOptions.width === width ? 'border-blue-500 bg-blue-500/15 text-blue-300' : 'border-slate-700 text-slate-400 hover:border-slate-500'}`}
+                        >
+                            {width === 1080 ? '1080 px' : width === 2000 ? '2000 px' : '4K'}
+                        </button>
+                    ))}
+                </div>
+                <p className="mt-2 text-[11px] leading-4 text-slate-500">Longest edge of the final image. Higher resolutions use more memory.</p>
+            </div>
+
+            <div className="border-t border-slate-700 pt-5">
+                <label className="flex cursor-pointer items-center justify-between gap-4">
+                    <span>
+                        <span className="block text-sm font-semibold text-slate-200">Comparison labels</span>
+                        <span className="block text-[11px] text-slate-500">Add labels to the first two photos</span>
+                    </span>
+                    <input
+                        type="checkbox"
+                        checked={comparisonLabels.enabled}
+                        onChange={(event) => onUpdateComparisonLabels({ enabled: event.target.checked })}
+                        className="h-5 w-5 accent-blue-500"
+                    />
+                </label>
+                {comparisonLabels.enabled && (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                        <label className="text-xs text-slate-400">
+                            First photo
+                            <input
+                                value={comparisonLabels.left}
+                                maxLength={24}
+                                onChange={(event) => onUpdateComparisonLabels({ left: event.target.value })}
+                                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                            />
+                        </label>
+                        <label className="text-xs text-slate-400">
+                            Second photo
+                            <input
+                                value={comparisonLabels.right}
+                                maxLength={24}
+                                onChange={(event) => onUpdateComparisonLabels({ right: event.target.value })}
+                                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                            />
+                        </label>
+                    </div>
+                )}
             </div>
         </div>
     );
